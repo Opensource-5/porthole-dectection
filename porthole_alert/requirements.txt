@@ -1,0 +1,12 @@
+# Core dependencies
+requests
+python-dotenv
+
+# LangChain related
+langchain
+langchain-openai
+
+# OpenAI
+openai
+
+streamlit
