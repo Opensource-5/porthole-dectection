@@ -1,0 +1,11 @@
+fastapi
+folium
+python-multipart
+requests
+streamlit
+streamlit-folium
+uvicorn
+langchain
+langchain-openai
+openai
+python-dotenv

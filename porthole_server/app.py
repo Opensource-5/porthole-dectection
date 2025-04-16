@@ -13,8 +13,12 @@ import sqlite3
 import math
 import os
 import json
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Union, Set, Tuple
 from datetime import datetime
+import time
+from apscheduler.schedulers.background import BackgroundScheduler
+from pydantic import BaseModel, Field
+from contextlib import asynccontextmanager
 
 # ======================================================
 # 설정 및 초기화
@@ -23,11 +27,36 @@ from datetime import datetime
 # SQLite DB 파일 경로 설정
 DATABASE_PATH = "porthole.db"
 
-# FastAPI 앱 생성
+# 포트홀 근접 알림을 위한 거리 임계값 (미터 단위)
+PROXIMITY_THRESHOLD = 100  # 100미터 이내
+
+# 새로 감지된 포트홀 저장 (클라이언트에서 확인할 수 있도록)
+# 최근 감지된 포트홀 목록 (최대 10개 유지)
+recent_detected_portholes = []
+MAX_RECENT_PORTHOLES = 10
+
+# 스케줄러 인스턴스 생성
+scheduler = BackgroundScheduler()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # 앱 시작 시 실행
+    scheduler.add_job(monitor_proximity, 'interval', seconds=10)
+    scheduler.start()
+    print("포트홀-차량 모니터링 스케줄러가 시작되었습니다")
+
+    yield  # 앱 실행 중
+
+    # 앱 종료 시 실행
+    scheduler.shutdown()
+    print("포트홀-차량 모니터링 스케줄러가 종료되었습니다")
+
+# FastAPI 인스턴스 생성
 app = FastAPI(
     title="포트홀 감지 API",
     description="도로의 포트홀 위치와 차량 정보를 관리하는 API",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 # CORS 설정 추가
@@ -39,13 +68,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 새로 감지된 포트홀 저장 (클라이언트에서 확인할 수 있도록)
-# 최근 감지된 포트홀 목록 (최대 10개 유지)
-recent_detected_portholes = []
-MAX_RECENT_PORTHOLES = 10
+# 추가: API에서 사용할 요청 모델 정의
+class CarModel(BaseModel):
+    lat: float = Field(..., description="차량의 위도 좌표")
+    lng: float = Field(..., description="차량의 경도 좌표")
+
+class PortholeModel(BaseModel):
+    lat: float = Field(..., description="포트홀의 위도 좌표")
+    lng: float = Field(..., description="포트홀의 경도 좌표")
+    depth: Optional[float] = Field(None, description="포트홀의 깊이(cm)")
+    location: Optional[str] = Field(None, description="포트홀의 위치 설명")
+    status: str = Field("발견됨", description="포트홀의 상태 (발견됨, 수리중, 수리완료 등)")
 
 # ======================================================
-# 데이터베이스 관련 함수
+# 데이터베이스 유틸리티 함수
 # ======================================================
 
 def get_db_connection() -> sqlite3.Connection:
@@ -121,6 +157,10 @@ def init_db() -> None:
     conn.close()
     print("데이터베이스 초기화 완료")
 
+# ======================================================
+# 포트홀 및 차량 데이터 관련 함수
+# ======================================================
+
 def get_all_portholes() -> List[Dict]:
     """
     모든 포트홀 목록을 조회합니다.
@@ -160,6 +200,24 @@ def get_porthole_by_id(porthole_id: int) -> Optional[Dict]:
         print(f"get_porthole_by_id 오류: {e}")
         return None
 
+def get_all_cars() -> List[Dict]:
+    """
+    모든 차량 정보를 조회합니다.
+    
+    Returns:
+        List[Dict]: 차량 정보 목록
+    """
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM car")
+        results = cursor.fetchall()
+        conn.close()
+        return [dict(row) for row in results]
+    except Exception as e:
+        print(f"get_all_cars 오류: {e}")
+        return []
+
 def get_car_by_id(car_id: int) -> Optional[Dict]:
     """
     ID로 특정 차량 정보를 조회합니다.
@@ -181,24 +239,6 @@ def get_car_by_id(car_id: int) -> Optional[Dict]:
         print(f"get_car_by_id 오류: {e}")
         return None
 
-def get_all_cars() -> List[Dict]:
-    """
-    모든 차량 정보를 조회합니다.
-    
-    Returns:
-        List[Dict]: 차량 정보 목록
-    """
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM car")
-        results = cursor.fetchall()
-        conn.close()
-        return [dict(row) for row in results]
-    except Exception as e:
-        print(f"get_all_cars 오류: {e}")
-        return []
-
 def update_porthole_status(porthole_id: int, new_status: str) -> bool:
     """
     포트홀의 상태를 업데이트합니다.
@@ -219,6 +259,103 @@ def update_porthole_status(porthole_id: int, new_status: str) -> bool:
         return True
     except Exception as e:
         print(f"update_porthole_status 오류: {e}")
+        return False
+
+# 차량 및 포트홀 추가/삭제 함수
+def add_car(car_data: Dict) -> int:
+    """
+    새로운 차량 정보를 데이터베이스에 추가합니다.
+    
+    Args:
+        car_data: 차량 정보 (위도, 경도)
+        
+    Returns:
+        int: 추가된 차량의 ID
+    """
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO car (lat, lng) VALUES (?, ?)",
+            (car_data["lat"], car_data["lng"])
+        )
+        car_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        return car_id
+    except Exception as e:
+        print(f"add_car 오류: {e}")
+        raise
+
+def delete_car(car_id: int) -> bool:
+    """
+    특정 ID의 차량 정보를 데이터베이스에서 삭제합니다.
+    
+    Args:
+        car_id: 삭제할 차량 ID
+        
+    Returns:
+        bool: 삭제 성공 여부
+    """
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM car WHERE id = ?", (car_id,))
+        deleted = cursor.rowcount > 0
+        conn.commit()
+        conn.close()
+        return deleted
+    except Exception as e:
+        print(f"delete_car 오류: {e}")
+        return False
+
+def add_porthole(porthole_data: Dict) -> int:
+    """
+    새로운 포트홀 정보를 데이터베이스에 추가합니다.
+    
+    Args:
+        porthole_data: 포트홀 정보 (위도, 경도, 깊이, 위치, 상태)
+        
+    Returns:
+        int: 추가된 포트홀의 ID
+    """
+    try:
+        current_date = datetime.now().strftime("%Y-%m-%d")
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO porthole (lat, lng, depth, location, date, status) VALUES (?, ?, ?, ?, ?, ?)",
+            (porthole_data["lat"], porthole_data["lng"], porthole_data.get("depth"), 
+             porthole_data.get("location"), current_date, porthole_data.get("status", "발견됨"))
+        )
+        porthole_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        return porthole_id
+    except Exception as e:
+        print(f"add_porthole 오류: {e}")
+        raise
+
+def delete_porthole(porthole_id: int) -> bool:
+    """
+    특정 ID의 포트홀 정보를 데이터베이스에서 삭제합니다.
+    
+    Args:
+        porthole_id: 삭제할 포트홀 ID
+        
+    Returns:
+        bool: 삭제 성공 여부
+    """
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM porthole WHERE id = ?", (porthole_id,))
+        deleted = cursor.rowcount > 0
+        conn.commit()
+        conn.close()
+        return deleted
+    except Exception as e:
+        print(f"delete_porthole 오류: {e}")
         return False
 
 # ======================================================
@@ -252,8 +389,103 @@ def calculate_distance(lat1: float, lng1: float, lat2: float, lng2: float) -> fl
     # 거리 계산 (미터 단위)
     return R * c
 
-# 포트홀 근접 알림을 위한 거리 임계값 (미터 단위)
-PROXIMITY_THRESHOLD = 100  # 100미터 이내
+# ======================================================
+# 알림 관리를 위한 자료구조
+# ======================================================
+
+# 알림 자료구조: {car_id -> [알림 정보 목록]}
+car_alerts = {}
+
+# 이미 알림을 보낸 (차량, 포트홀) 쌍 관리
+# (car_id, porthole_id) -> 마지막 알림 시간
+sent_alerts = {}
+
+# 차량이 확인(acknowledge)한 포트홀 세트: {(car_id, porthole_id)}
+acknowledged_portholes = set()
+
+# 최소 알림 재발송 간격 (초)
+MIN_ALERT_INTERVAL = 60  # 같은 포트홀에 대해 1분에 한 번만 알림
+
+# ======================================================
+# 주기적 모니터링 및 알림 생성 함수
+# ======================================================
+
+def monitor_proximity():
+    """
+    포트홀과 차량 사이의 거리를 모니터링하고 알림을 생성하는 함수.
+    BackgroundScheduler에 의해 주기적으로 실행됨.
+    """
+    print(f"[{datetime.now()}] 포트홀-차량 거리 모니터링 수행 중...")
+    
+    # 모든 포트홀과 차량 정보 가져오기
+    cars = get_all_cars()
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM porthole")
+    portholes = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+    
+    current_time = time.time()
+    
+    # 각 차량에 대해 확인
+    for car in cars:
+        car_id = car['id']
+        new_alerts = []
+        
+        # 각 포트홀에 대한 거리 계산
+        for porthole in portholes:
+            porthole_id = porthole['id']
+            
+            # 수리 완료된 포트홀은 제외
+            if porthole['status'] in {'수리완료', '수리중'}:
+                continue
+            
+            # 이미 확인(acknowledge)한 포트홀은 제외
+            if (car_id, porthole_id) in acknowledged_portholes:
+                continue
+                
+            distance = calculate_distance(car['lat'], car['lng'], porthole['lat'], porthole['lng'])
+            
+            # 임계값 이하인 경우 알림 후보
+            if distance <= PROXIMITY_THRESHOLD:
+                alert_key = (car_id, porthole_id)
+                
+                # 이미 알림을 보낸 경우, 최소 간격 확인
+                should_alert = True
+                if alert_key in sent_alerts:
+                    last_alert_time = sent_alerts[alert_key]
+                    if current_time - last_alert_time < MIN_ALERT_INTERVAL:
+                        should_alert = False
+                
+                if should_alert:
+                    # 알림 정보 생성 및 저장
+                    alert_info = {
+                        "porthole_id": porthole_id,
+                        "location": porthole["location"],
+                        "distance": round(distance, 2),
+                        "depth": porthole["depth"],
+                        "status": porthole["status"],
+                        "created_at": current_time
+                    }
+                    new_alerts.append(alert_info)
+                    
+                    # 알림 발송 기록 업데이트
+                    sent_alerts[alert_key] = current_time
+                    
+                    print(f"차량 {car_id}에 포트홀 {porthole_id} 알림 생성 (거리: {round(distance, 2)}m)")
+        
+        # 차량에 대한 알림 저장
+        if new_alerts:
+            if car_id not in car_alerts:
+                car_alerts[car_id] = []
+            
+            # 새 알림 추가
+            car_alerts[car_id].extend(new_alerts)
+            
+            # 최근 알림 30개만 유지
+            if len(car_alerts[car_id]) > 30:
+                car_alerts[car_id] = car_alerts[car_id][-30:]
 
 # ======================================================
 # API 엔드포인트
@@ -266,12 +498,20 @@ def root():
         "message": "포트홀 감지 API",
         "endpoints": [
             "/api/portholes - 모든 포트홀 목록 조회",
-            "/update_status - 포트홀 상태 업데이트(POST)",
+            "/api/portholes/add - 새로운 포트홀 추가(POST)",
             "/api/portholes/{porthole_id} - 특정 포트홀 상세 정보 조회",
-            "/api/nearby_portholes/{car_id} - 차량 근처의 포트홀 알림",
-            "/api/check_proximity - 포트홀 근처의 차량 검사 및 알림",
+            "/api/portholes/{porthole_id} - 특정 포트홀 삭제(DELETE)",
+            "/update_status - 포트홀 상태 업데이트(POST)",
+            "/api/cars - 모든 차량 목록 조회",
+            "/api/cars/add - 새로운 차량 추가(POST)",
+            "/api/cars/{car_id} - 특정 차량 상세 정보 조회",
+            "/api/cars/{car_id} - 특정 차량 삭제(DELETE)",
+            "/api/nearby_cars/{porthole_id} - 포트홀 근처의 차량 조회",
+            "/api/check_proximity - 포트홀 근처의 차량 검사 및 알림 상태",
             "/api/notify_new_porthole - 새로운 포트홀 감지 알림 수신(POST)",
-            "/api/new_portholes - 최근 감지된 포트홀 목록 조회"
+            "/api/new_portholes - 최근 감지된 포트홀 목록 조회",
+            "/api/car_alerts/{car_id} - 차량별 포트홀 알림 조회",
+            "/api/car_alerts/{car_id}/acknowledge - 차량별 알림 확인 처리"
         ]
     }
 
@@ -304,16 +544,164 @@ def api_porthole_details(porthole_id: int):
         raise HTTPException(status_code=404, detail=f"포트홀 ID {porthole_id}를 찾을 수 없습니다.")
     return porthole
 
-@app.get("/api/nearby_portholes/{car_id}", response_description="차량 근처의 포트홀 알림")
-def nearby_portholes(car_id: int):
+@app.post("/api/portholes/add", response_description="새로운 포트홀 추가")
+def api_add_porthole(porthole: PortholeModel):
     """
-    특정 차량 주변의 포트홀을 알려주는 API 엔드포인트
+    새로운 포트홀 정보를 추가하는 API 엔드포인트
+    
+    Args:
+        porthole: 포트홀 정보 모델
+        
+    Returns:
+        Dict: 추가된 포트홀 정보
+        
+    Raises:
+        HTTPException: 포트홀 추가 실패 시
+    """
+    try:
+        porthole_id = add_porthole(porthole.dict())
+        
+        # 최근 감지된 포트홀 목록에 추가
+        notification = {
+            "porthole_id": porthole_id,
+            "lat": porthole.lat,
+            "lng": porthole.lng,
+            "depth": porthole.depth,
+            "location": porthole.location,
+            "status": porthole.status,
+            "detected_at": datetime.now().isoformat()
+        }
+        
+        global recent_detected_portholes
+        recent_detected_portholes.append(notification)
+        
+        # 최대 개수 유지
+        if len(recent_detected_portholes) > MAX_RECENT_PORTHOLES:
+            recent_detected_portholes = recent_detected_portholes[-MAX_RECENT_PORTHOLES:]
+        
+        return {
+            "success": True,
+            "message": "새로운 포트홀이 성공적으로 추가되었습니다",
+            "porthole_id": porthole_id,
+            "porthole_data": porthole.dict()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"포트홀 추가 중 오류 발생: {str(e)}")
+
+@app.delete("/api/portholes/{porthole_id}", response_description="포트홀 삭제")
+def api_delete_porthole(porthole_id: int):
+    """
+    특정 ID의 포트홀 정보를 삭제하는 API 엔드포인트
+    
+    Args:
+        porthole_id: 삭제할 포트홀 ID
+        
+    Returns:
+        Dict: 삭제 결과
+        
+    Raises:
+        HTTPException: 포트홀 정보가 없거나 삭제 실패 시
+    """
+    # 포트홀 존재 확인
+    porthole = get_porthole_by_id(porthole_id)
+    if not porthole:
+        raise HTTPException(status_code=404, detail=f"포트홀 ID {porthole_id}를 찾을 수 없습니다.")
+    
+    # 포트홀 삭제
+    if delete_porthole(porthole_id):
+        # 최근 감지된 포트홀 목록에서 제거
+        global recent_detected_portholes
+        recent_detected_portholes = [p for p in recent_detected_portholes if p.get("porthole_id") != porthole_id]
+        
+        # 해당 포트홀 관련 알림 제거
+        for car_id in car_alerts:
+            car_alerts[car_id] = [alert for alert in car_alerts[car_id] 
+                                if alert.get("porthole_id") != porthole_id]
+        
+        return {
+            "success": True,
+            "message": f"포트홀 ID {porthole_id}가 성공적으로 삭제되었습니다"
+        }
+    else:
+        raise HTTPException(status_code=500, detail=f"포트홀 ID {porthole_id} 삭제 중 오류가 발생했습니다")
+
+@app.get("/api/cars", response_description="차량 목록")
+def api_cars():
+    """
+    모든 차량 목록을 조회하는 API 엔드포인트
+    
+    Returns:
+        List[Dict]: 차량 정보 목록
+    """
+    return get_all_cars()
+
+@app.post("/api/cars/add", response_description="새로운 차량 추가")
+def api_add_car(car: CarModel):
+    """
+    새로운 차량 정보를 추가하는 API 엔드포인트
+    
+    Args:
+        car: 차량 정보 모델
+        
+    Returns:
+        Dict: 추가된 차량 정보
+        
+    Raises:
+        HTTPException: 차량 추가 실패 시
+    """
+    try:
+        car_id = add_car(car.dict())
+        return {
+            "success": True,
+            "message": "새로운 차량이 성공적으로 추가되었습니다",
+            "car_id": car_id,
+            "car_data": car.dict()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"차량 추가 중 오류 발생: {str(e)}")
+
+@app.delete("/api/cars/{car_id}", response_description="차량 삭제")
+def api_delete_car(car_id: int):
+    """
+    특정 ID의 차량 정보를 삭제하는 API 엔드포인트
+    
+    Args:
+        car_id: 삭제할 차량 ID
+        
+    Returns:
+        Dict: 삭제 결과
+        
+    Raises:
+        HTTPException: 차량 정보가 없거나 삭제 실패 시
+    """
+    # 차량 존재 확인
+    car = get_car_by_id(car_id)
+    if not car:
+        raise HTTPException(status_code=404, detail=f"차량 ID {car_id}를 찾을 수 없습니다.")
+    
+    # 차량 삭제
+    if delete_car(car_id):
+        # 차량 관련 알림 제거
+        if car_id in car_alerts:
+            del car_alerts[car_id]
+        
+        return {
+            "success": True,
+            "message": f"차량 ID {car_id}가 성공적으로 삭제되었습니다"
+        }
+    else:
+        raise HTTPException(status_code=500, detail=f"차량 ID {car_id} 삭제 중 오류가 발생했습니다")
+
+@app.get("/api/cars/{car_id}", response_description="차량 상세 정보")
+def api_car_details(car_id: int):
+    """
+    특정 ID의 차량 상세 정보를 조회하는 API 엔드포인트
     
     Args:
         car_id: 차량 ID
         
     Returns:
-        Dict: 근처 포트홀 목록과 거리 정보
+        Dict: 차량 상세 정보
         
     Raises:
         HTTPException: 차량 데이터가 없는 경우
@@ -321,92 +709,174 @@ def nearby_portholes(car_id: int):
     car = get_car_by_id(car_id)
     if not car:
         raise HTTPException(status_code=404, detail=f"차량 ID {car_id}를 찾을 수 없습니다.")
+    return car
+
+@app.get("/api/nearby_cars/{porthole_id}", response_description="포트홀 근처의 차량 목록")
+def nearby_cars(porthole_id: int):
+    """
+    특정 포트홀 주변의 차량을 알려주는 API 엔드포인트
     
-    # 모든 포트홀 조회
+    Args:
+        porthole_id: 포트홀 ID
+        
+    Returns:
+        Dict: 근처 차량 목록과 거리 정보
+        
+    Raises:
+        HTTPException: 포트홀 데이터가 없는 경우
+    """
+    porthole = get_porthole_by_id(porthole_id)
+    if not porthole:
+        raise HTTPException(status_code=404, detail=f"포트홀 ID {porthole_id}를 찾을 수 없습니다.")
+    
+    # 모든 차량 조회
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM porthole")
-    portholes = [dict(row) for row in cursor.fetchall()]
+    cursor.execute("SELECT * FROM car")
+    cars = [dict(row) for row in cursor.fetchall()]
     conn.close()
     
-    # 차량과 각 포트홀 사이의 거리 계산
+    # 포트홀과 각 차량 사이의 거리 계산
     nearby_results = []
-    for porthole in portholes:
-        distance = calculate_distance(car['lat'], car['lng'], porthole['lat'], porthole['lng'])
+    for car in cars:
+        distance = calculate_distance(porthole['lat'], porthole['lng'], car['lat'], car['lng'])
         
-        # 임계값 이하의 포트홀만 포함
+        # 임계값 이하의 차량만 포함
         if distance <= PROXIMITY_THRESHOLD:
             nearby_results.append({
-                "porthole_id": porthole["id"],
-                "location": porthole["location"],
+                "car_id": car["id"],
                 "distance": round(distance, 2),  # 소수점 2자리까지 반올림
-                "depth": porthole["depth"],
-                "status": porthole["status"]
+                "car_location": {"lat": car["lat"], "lng": car["lng"]}
             })
     
     # 거리순으로 정렬
     nearby_results.sort(key=lambda x: x["distance"])
     
     return {
-        "car_id": car_id,
-        "car_location": {"lat": car["lat"], "lng": car["lng"]},
-        "nearby_portholes": nearby_results,
+        "porthole_id": porthole_id,
+        "porthole_location": {"lat": porthole["lat"], "lng": porthole["lng"]},
+        "location": porthole["location"],
+        "depth": porthole["depth"],
+        "status": porthole["status"],
+        "nearby_cars": nearby_results,
         "proximity_threshold": PROXIMITY_THRESHOLD
     }
 
-@app.get("/api/check_proximity", response_description="포트홀 근처의 차량 검사 및 알림")
+@app.get("/api/check_proximity", response_description="포트홀 근처의 차량 검사 및 알림 상태")
 def check_proximity():
     """
-    모든 차량과 포트홀 간의 거리를 계산하고 일정 거리 이하인 경우 알림 정보를 제공하는 API
+    현재 모든 차량과 포트홀 간의 근접성 현황을 조회하는 API
     
     Returns:
         Dict: 각 차량에 대한 근처 포트홀 알림 정보
     """
-    # 모든 차량과 포트홀 정보 조회
-    cars = get_all_cars()
-    
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM porthole")
-    portholes = [dict(row) for row in cursor.fetchall()]
-    conn.close()
-    
-    # 각 차량에 대한 알림 정보를 저장할 목록
-    alerts = []
-    
-    # 모든 차량에 대해 검사
-    for car in cars:
-        car_alerts = []
-        
-        # 각 포트홀에 대한 거리 계산
-        for porthole in portholes:
-            distance = calculate_distance(car['lat'], car['lng'], porthole['lat'], porthole['lng'])
-            
-            # 임계값 이하인 경우 알림 추가
-            if distance <= PROXIMITY_THRESHOLD:
-                car_alerts.append({
-                    "porthole_id": porthole["id"],
-                    "location": porthole["location"],
-                    "distance": round(distance, 2),
-                    "depth": porthole["depth"],
-                    "status": porthole["status"]
-                })
-        
-        # 거리순으로 정렬
-        car_alerts.sort(key=lambda x: x["distance"])
-        
-        # 차량에 대한 알림이 있는 경우만 추가
-        if car_alerts:
-            alerts.append({
-                "car_id": car["id"],
-                "car_location": {"lat": car["lat"], "lng": car["lng"]},
-                "alerts": car_alerts
+    # 현재 알림 상태 요약
+    alert_summary = []
+    for car_id, alerts in car_alerts.items():
+        if alerts:
+            car = get_car_by_id(car_id)
+            alert_summary.append({
+                "car_id": car_id,
+                "car_location": {"lat": car["lat"], "lng": car["lng"]} if car else None,
+                "alert_count": len(alerts),
+                "latest_alerts": sorted(alerts, key=lambda x: x.get("created_at", 0), reverse=True)[:5]  # 최근 5개만
             })
     
     return {
-        "timestamp": "알림 생성 시각",
+        "timestamp": datetime.now().isoformat(),
         "proximity_threshold": PROXIMITY_THRESHOLD,
-        "alerts": alerts
+        "total_cars_with_alerts": len(alert_summary),
+        "alerts": alert_summary
+    }
+
+@app.get("/api/car_alerts/{car_id}", response_description="차량별 포트홀 알림")
+def get_car_alerts(car_id: int):
+    """
+    특정 차량에 대한 포트홀 근접 알림을 조회하는 API 엔드포인트
+    
+    Args:
+        car_id: 차량 ID
+        
+    Returns:
+        Dict: 해당 차량에 대한 알림 목록
+        
+    Raises:
+        HTTPException: 차량 정보가 없는 경우
+    """
+    # 차량 존재 확인
+    car = get_car_by_id(car_id)
+    if not car:
+        raise HTTPException(status_code=404, detail=f"차량 ID {car_id}를 찾을 수 없습니다.")
+    
+    # 해당 차량의 알림 가져오기
+    alerts = car_alerts.get(car_id, [])
+    
+    # 알림을 생성 시간 기준 내림차순 정렬 (최신순)
+    alerts_copy = sorted(alerts, key=lambda x: x.get("created_at", 0), reverse=True)
+    
+    # 응답 포맷팅 - ISO 형식 타임스탬프 추가
+    for alert in alerts_copy:
+        if "created_at" in alert:
+            alert["timestamp"] = datetime.fromtimestamp(alert["created_at"]).isoformat()
+    
+    return {
+        "car_id": car_id,
+        "alert_count": len(alerts_copy),
+        "alerts": alerts_copy
+    }
+
+@app.post("/api/car_alerts/{car_id}/acknowledge", response_description="알림 확인 처리")
+async def acknowledge_alerts(car_id: int, request: Request):
+    """
+    차량의 알림을 확인 처리하는 API 엔드포인트
+    
+    Args:
+        car_id: 차량 ID
+        request: 요청 객체 (알림 ID 목록 포함)
+        
+    Returns:
+        Dict: 처리 결과
+    """
+    # 차량 존재 확인
+    car = get_car_by_id(car_id)
+    if not car:
+        raise HTTPException(status_code=404, detail=f"차량 ID {car_id}를 찾을 수 없습니다.")
+    
+    # 요청 데이터 파싱
+    try:
+        data = await request.json()
+    except:
+        raise HTTPException(status_code=400, detail="JSON 요청 형식이 올바르지 않습니다")
+    
+    # 알림 ID 목록 확인
+    if "alert_ids" not in data or not isinstance(data["alert_ids"], list):
+        raise HTTPException(status_code=400, detail="alert_ids 필드가 필요합니다")
+    
+    # 해당 차량의 알림 목록
+    if car_id not in car_alerts:
+        return {"acknowledged": 0}
+    
+    # 확인된 알림 제거
+    alerts_before = len(car_alerts[car_id])
+    
+    # porthole_id 기준으로 알림 필터링 (확인한 알림은 제외)
+    porthole_ids_to_remove = set(data["alert_ids"])
+    
+    # 확인(acknowledge)된 포트홀 기록 - 해당 차량에 다시 알리지 않도록
+    for porthole_id in porthole_ids_to_remove:
+        acknowledged_portholes.add((car_id, porthole_id))
+    
+    car_alerts[car_id] = [
+        alert for alert in car_alerts[car_id] 
+        if alert["porthole_id"] not in porthole_ids_to_remove
+    ]
+    
+    alerts_after = len(car_alerts[car_id])
+    
+    return {
+        "acknowledged": alerts_before - alerts_after,
+        "remaining_alerts": alerts_after,
+        "permanently_acknowledged": len(porthole_ids_to_remove)
     }
 
 @app.post("/update_status", response_description="포트홀 상태 업데이트")
@@ -454,7 +924,7 @@ async def notify_new_porthole(request: Request):
         data = await request.json()
         
         # 필수 필드 확인
-        required_fields = ['lat', 'lng', 'depth', 'location']
+        required_fields = ['lat', 'lng', 'depth']
         for field in required_fields:
             if field not in data:
                 raise HTTPException(status_code=400, detail=f"필수 필드 '{field}'가 없습니다")
@@ -469,7 +939,7 @@ async def notify_new_porthole(request: Request):
         cursor.execute('''
             INSERT INTO porthole (lat, lng, depth, location, date, status)
             VALUES (?, ?, ?, ?, ?, ?)
-        ''', (data['lat'], data['lng'], data['depth'], data['location'], current_date, '발견됨'))
+        ''', (data['lat'], data['lng'], data['depth'], "임시 위치", current_date, '발견됨'))
         
         # 저장된 포트홀의 ID 가져오기
         porthole_id = cursor.lastrowid
@@ -531,6 +1001,10 @@ def get_new_portholes():
         "count": len(recent_detected_portholes),
         "portholes": recent_detected_portholes
     }
+
+# ======================================================
+# 애플리케이션 시작 코드
+# ======================================================
 
 # 앱 시작 시 DB 초기화
 init_db()

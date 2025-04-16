@@ -84,22 +84,21 @@ def check_new_portholes():
     # 마지막 확인 시간 업데이트
     st.session_state.last_check_time = current_time
 
-# 차량 데이터 가져오기 함수 추가
+# 차량 데이터 가져오기 함수 수정
 @st.cache_data(ttl=60)  # 1분 캐싱
 def fetch_cars():
     try:
-        response = requests.get(f"{API_BASE_URL}/check_proximity")
+        response = requests.get(f"{API_BASE_URL}/cars")
         if response.status_code == 200:
             data = response.json()
             cars = []
-            for alert in data.get('alerts', []):
-                car = {
-                    'id': alert['car_id'],
-                    'lat': alert['car_location']['lat'],
-                    'lng': alert['car_location']['lng'],
-                    'nearby_portholes': len(alert['alerts'])
-                }
-                cars.append(car)
+            for car in data:
+                cars.append({
+                    'id': car['id'],
+                    'lat': car['lat'],
+                    'lng': car['lng'],
+                    'nearby_portholes': None  # 근접 포트홀 수는 별도 API에서 필요시 조회
+                })
             return cars
         else:
             st.error("차량 데이터를 가져오는데 실패했습니다.")
@@ -260,6 +259,58 @@ cars = fetch_cars()
 
 # 탭 1: 포트홀 목록 보기
 with tab1:
+    # --- 포트홀 추가 폼 ---
+    with st.expander("➕ 포트홀 추가"):
+        with st.form("add_porthole_form"):
+            lat = st.number_input("위도", format="%.6f")
+            lng = st.number_input("경도", format="%.6f")
+            depth = st.number_input("깊이(cm)", min_value=0.0, format="%.2f")
+            location = st.text_input("위치 설명")
+            status = st.selectbox("상태", ["발견됨", "수리중", "수리완료"], index=0)
+            submitted = st.form_submit_button("포트홀 추가")
+            if submitted:
+                try:
+                    resp = requests.post(
+                        f"{API_BASE_URL}/portholes/add",
+                        json={
+                            "lat": lat,
+                            "lng": lng,
+                            "depth": depth,
+                            "location": location,
+                            "status": status
+                        }
+                    )
+                    if resp.status_code == 200:
+                        st.success("포트홀 추가 성공!")
+                        st.cache_data.clear()
+                        st.rerun()
+                    else:
+                        st.error(f"포트홀 추가 실패: {resp.text}")
+                except Exception as e:
+                    st.error(f"포트홀 추가 오류: {str(e)}")
+
+    # --- 포트홀 삭제 폼 ---
+    with st.expander("🗑️ 포트홀 삭제"):
+        if filtered_portholes:
+            delete_id = st.selectbox(
+                "삭제할 포트홀 선택",
+                options=[p['id'] for p in filtered_portholes],
+                format_func=lambda x: f"ID: {x}"
+            )
+            if st.button("포트홀 삭제"):
+                try:
+                    resp = requests.delete(f"{API_BASE_URL}/portholes/{delete_id}")
+                    if resp.status_code == 200:
+                        st.success("포트홀 삭제 성공!")
+                        st.cache_data.clear()
+                        st.rerun()
+                    else:
+                        st.error(f"포트홀 삭제 실패: {resp.text}")
+                except Exception as e:
+                    st.error(f"포트홀 삭제 오류: {str(e)}")
+        else:
+            st.info("삭제할 포트홀이 없습니다.")
+
     if filtered_portholes:
         # 데이터프레임으로 변환하여 표시
         df = pd.DataFrame(filtered_portholes)
@@ -283,8 +334,52 @@ with tab1:
     else:
         st.info("표시할 포트홀이 없습니다.")
 
-# 탭 2: 차량 목록 보기 (새로 추가)
+# 탭 2: 차량 목록 보기
 with tab2:
+    # --- 차량 추가 폼 ---
+    with st.expander("➕ 차량 추가"):
+        with st.form("add_car_form"):
+            car_lat = st.number_input("차량 위도", format="%.6f", key="car_lat")
+            car_lng = st.number_input("차량 경도", format="%.6f", key="car_lng")
+            car_submitted = st.form_submit_button("차량 추가")
+            if car_submitted:
+                try:
+                    resp = requests.post(
+                        f"{API_BASE_URL}/cars/add",
+                        json={"lat": car_lat, "lng": car_lng}
+                    )
+                    if resp.status_code == 200:
+                        st.success("차량 추가 성공!")
+                        st.cache_data.clear()
+                        st.rerun()
+                    else:
+                        st.error(f"차량 추가 실패: {resp.text}")
+                except Exception as e:
+                    st.error(f"차량 추가 오류: {str(e)}")
+
+    # --- 차량 삭제 폼 ---
+    with st.expander("🗑️ 차량 삭제"):
+        if cars:
+            delete_car_id = st.selectbox(
+                "삭제할 차량 선택",
+                options=[car['id'] for car in cars],
+                format_func=lambda x: f"ID: {x}",
+                key="delete_car_select"
+            )
+            if st.button("차량 삭제"):
+                try:
+                    resp = requests.delete(f"{API_BASE_URL}/cars/{delete_car_id}")
+                    if resp.status_code == 200:
+                        st.success("차량 삭제 성공!")
+                        st.cache_data.clear()
+                        st.rerun()
+                    else:
+                        st.error(f"차량 삭제 실패: {resp.text}")
+                except Exception as e:
+                    st.error(f"차량 삭제 오류: {str(e)}")
+        else:
+            st.info("삭제할 차량이 없습니다.")
+
     if cars:
         # 차량 데이터를 데이터프레임으로 변환하여 표시
         df_cars = pd.DataFrame(cars)
@@ -483,17 +578,27 @@ with tab3:
                         
                         # 주변 포트홀 정보 요청
                         try:
-                            proximity_response = requests.get(f"{API_BASE_URL}/nearby_portholes/{selected_car_id}")
+                            proximity_response = requests.get(f"{API_BASE_URL}/car_alerts/{selected_car_id}")
                             if proximity_response.status_code == 200:
                                 proximity_data = proximity_response.json()
-                                nearby_portholes = proximity_data.get('nearby_portholes', [])
+                                nearby_portholes = proximity_data.get('alerts', [])
                                 
                                 if nearby_portholes:
                                     st.subheader("주변 포트홀 목록")
-                                    nearby_df = pd.DataFrame(nearby_portholes)
+                                    # 데이터 구조 변환 - alerts 배열의 각 요소에서 필요한 필드만 추출
+                                    formatted_portholes = []
+                                    for alert in nearby_portholes:
+                                        formatted_portholes.append({
+                                            "포트홀 ID": alert.get("porthole_id", "N/A"),
+                                            "위치": alert.get("location", "N/A"),
+                                            "깊이": alert.get("depth", "N/A"),
+                                            "거리": f"{alert.get('distance', 'N/A')}m",
+                                            "상태": alert.get("status", "N/A")
+                                        })
+                                    nearby_df = pd.DataFrame(formatted_portholes)
                                     st.dataframe(nearby_df, use_container_width=True)
                                 else:
-                                    st.info(f"차량 {selected_car_id} 주변 {proximity_data.get('proximity_threshold', 100)}m 이내에 포트홀이 없습니다.")
+                                    st.info(f"차량 {selected_car_id} 주변에 알림이 발생한 포트홀이 없습니다.")
                         except Exception as e:
                             st.error(f"주변 포트홀 정보를 가져오는 도중 오류 발생: {str(e)}")
                 else:
