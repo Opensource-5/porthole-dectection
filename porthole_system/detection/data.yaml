@@ -1,0 +1,5 @@
+train: train/train.txt
+val: valid/val.txt
+nc: 1
+names:
+- pothole

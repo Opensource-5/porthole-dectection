@@ -1,0 +1,48 @@
+# 포트홀 감지 시스템 설정 파일
+
+# API 서버 설정
+api:
+  server_url: "https://hydrocodone-briefing-wc-elegant.trycloudflare.com/api/notify_new_porthole"
+  retry_count: 3
+  timeout_seconds: 10
+
+# 모델 설정
+models:
+  yolo:
+    path: "yolov5/runs/train/gun_yolov5s_results/weights/best.pt"
+    confidence_threshold: 0.5
+    img_size: 416
+  midas:
+    model_type: "DPT_Hybrid"
+
+# 데이터 경로 설정
+data_paths:
+  base_dir: "."
+  train_images: "train/images/*.jpg"
+  valid_images: "valid/images/*.jpg"
+  test_images: "test/images/*.jpg"
+  train_txt: "train/train.txt"
+  valid_txt: "valid/val.txt"
+  yaml_path: "data.yaml"
+
+# 포트홀 위치 정보 (기본값)
+location:
+  latitude: 37.5665
+  longitude: 126.9780
+
+# 시각화 설정
+visualization:
+  box_color: [0, 255, 0]  # BGR 형식 (초록색)
+  text_color: [0, 255, 0]  # BGR 형식 (초록색)
+  text_size: 0.6
+  text_thickness: 2
+  box_thickness: 2
+  depth_colormap: "MAGMA"  # MAGMA, JET, VIRIDIS, PLASMA 등
+  overlay_alpha: 0.4  # 깊이 맵 오버레이 투명도 (0.0-1.0)
+
+# 웹캠/비디오 설정
+video:
+  webcam_source: 0
+  frame_width: 640
+  frame_height: 480
+  fps: 60
