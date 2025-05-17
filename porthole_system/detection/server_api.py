@@ -97,7 +97,7 @@ class PortholeServerAPI:
                         result = response.json()
                         print(f"포트홀 정보가 성공적으로 서버에 전송되었습니다.")
                         # 전송 완료된 위치 기록
-                        
+                        self.sent_potholes.add(location_key)
                         return result
                     else:
                         print(f"포트홀 정보 전송 실패. 상태 코드: {response.status_code}")
@@ -108,9 +108,7 @@ class PortholeServerAPI:
                 # 마지막 시도가 아니면 잠시 대기 후 재시도
                 if attempt < self.retry_count - 1:
                     time.sleep(1)
-                    
-            self.sent_potholes.add(location_key)
-
+            
             return None
 
         except Exception as e:

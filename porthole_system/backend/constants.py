@@ -47,9 +47,9 @@ class AlertSettings:
             depth = depth or 0
             distance = distance or 0
             
-            if depth > 5 or distance < 10:
+            if depth > 2000:
                 return cls.HIGH
-            elif depth > 3 or distance < 30:
+            elif depth > 1000 or depth <= 2000:
                 return cls.MEDIUM
             else:
                 return cls.LOW
