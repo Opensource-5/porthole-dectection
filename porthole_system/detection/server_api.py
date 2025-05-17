@@ -42,7 +42,7 @@ CONFIG = load_config()
 
 # API 서버 URL 설정 (설정 파일에서 로드, 없으면 기본값 사용)
 API_SERVER_URL = CONFIG.get('api', {}).get('server_url', 
-    "https://hydrocodone-briefing-wc-elegant.trycloudflare.com/api/notify_new_porthole")
+    "https://statute-bradford-rebound-paragraph.trycloudflare.com/api/notify_new_porthole")
 
 
 class PortholeServerAPI:
