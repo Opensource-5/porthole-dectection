@@ -41,7 +41,7 @@ def render_porthole_tab(api_url: str):
         with st.form("add_porthole_form"):
             lat = st.number_input("위도", format="%.6f", value=37.5665)
             lng = st.number_input("경도", format="%.6f", value=126.9780)
-            depth = st.number_input("깊이(cm)", min_value=0.0, format="%.2f", value=3.0)
+            depth = st.number_input("깊이(mm)", min_value=0.0, format="%.2f", value=3.0)
             location = st.text_input("위치 설명", value="서울시 중구")
             status = st.selectbox("상태", ["발견됨", "수리중", "수리완료"], index=0)
             
@@ -125,7 +125,7 @@ def render_porthole_tab(api_url: str):
                         st.write(f"**위치:** {porthole_detail.get('location', '정보 없음')}")
                         st.write(f"**발견 날짜:** {porthole_detail.get('date', '정보 없음')}")
                         st.write(f"**상태:** {porthole_detail.get('status', '정보 없음')}")
-                        st.write(f"**깊이:** {porthole_detail.get('depth', '정보 없음')} cm")
+                        st.write(f"**깊이:** {porthole_detail.get('depth', '정보 없음')} mm")
                         st.write(f"**좌표:** {porthole_detail.get('lat', '정보 없음')}, {porthole_detail.get('lng', '정보 없음')}")
                         
                         # 상태 업데이트 폼
@@ -158,10 +158,10 @@ def render_porthole_tab(api_url: str):
                         depth = porthole_detail.get('depth', 0)
                         if depth is not None:
                             st.subheader("포트홀 깊이 시각화")
-                            if depth > 5:
+                            if depth > 2000:
                                 color = "red"
                                 risk = "높음"
-                            elif depth > 3:
+                            elif depth > 1000:
                                 color = "orange"
                                 risk = "중간"
                             else:
@@ -169,8 +169,8 @@ def render_porthole_tab(api_url: str):
                                 risk = "낮음"
                                 
                             st.markdown(f"**위험도:** <span style='color:{color};font-weight:bold;'>{risk}</span>", unsafe_allow_html=True)
-                            st.progress(min(depth / 10, 1.0))  # 최대 10cm를 기준으로
-                            st.write(f"{depth} cm")
+                            st.progress(min(depth / 10, 1.0))  # 최대 10mm를 기준으로
+                            st.write(f"{depth} mm")
                         
                         # 지도에 포트홀 위치 표시 추가 가능
         else:
