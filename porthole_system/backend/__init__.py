@@ -17,6 +17,15 @@ async def lifespan(app: FastAPI):
     앱 실행 및 종료 시 실행될 작업 정의
     """
     # 앱 시작 시 실행
+    # 데이터베이스 초기화를 먼저 수행
+    try:
+        print("데이터베이스 초기화 시작")
+        init_db()
+        print("데이터베이스 초기화 완료")
+    except Exception as e:
+        print(f"데이터베이스 초기화 중 오류 발생: {e}")
+    
+    # 스케줄러 시작
     scheduler.add_job(monitor_proximity, 'interval', seconds=10)
     scheduler.start()
     print("포트홀-차량 모니터링 스케줄러가 시작되었습니다")

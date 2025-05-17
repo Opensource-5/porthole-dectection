@@ -28,6 +28,21 @@ def get_all_portholes() -> List[Dict]:
             return [dict(row) for row in results]
     except Exception as e:
         logger.error(f"포트홀 목록 조회 중 오류 발생: {e}")
+        
+        # 데이터베이스 테이블이 없는 경우 (no such table 오류) 데이터베이스를 초기화
+        if "no such table" in str(e):
+            logger.info("데이터베이스 테이블이 없습니다. 데이터베이스를 초기화합니다.")
+            from backend.db import init_db
+            init_db()
+            # 초기화 후 다시 시도
+            try:
+                with db_transaction() as (conn, cursor):
+                    cursor.execute("SELECT id, location, depth, date, status, lat, lng FROM porthole")
+                    results = cursor.fetchall()
+                    return [dict(row) for row in results]
+            except Exception as e2:
+                logger.error(f"데이터베이스 초기화 후에도 조회 중 오류 발생: {e2}")
+        
         return []
 
 def get_porthole_by_id(porthole_id: int) -> Optional[Dict]:
@@ -48,7 +63,24 @@ def get_porthole_by_id(porthole_id: int) -> Optional[Dict]:
         conn.close()
         return dict(result) if result else None
     except Exception as e:
-        print(f"get_porthole_by_id 오류: {e}")
+        logger.error(f"get_porthole_by_id 오류: {e}")
+        
+        # 데이터베이스 테이블이 없는 경우 데이터베이스를 초기화
+        if "no such table" in str(e):
+            logger.info("데이터베이스 테이블이 없습니다. 데이터베이스를 초기화합니다.")
+            from backend.db import init_db
+            init_db()
+            # 초기화 후 다시 시도
+            try:
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute("SELECT * FROM porthole WHERE id = ?", (porthole_id,))
+                result = cursor.fetchone()
+                conn.close()
+                return dict(result) if result else None
+            except Exception as e2:
+                logger.error(f"데이터베이스 초기화 후에도 조회 중 오류 발생: {e2}")
+        
         return None
 
 def add_porthole(porthole_data: Dict) -> int:

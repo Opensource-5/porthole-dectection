@@ -6,7 +6,7 @@
 
 사용 방법:
 1. FastAPI 서버 실행: `uvicorn main:app --reload`
-2. Streamlit 앱 실행: `streamlit run frontend/app.py`
+2. Streamlit 앱 실행: `streamlit run frontend/app.py --server.port 8501`
 """
 
 import os
