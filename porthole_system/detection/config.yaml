@@ -2,7 +2,7 @@
 
 # API 서버 설정
 api:
-  server_url: "https://statute-bradford-rebound-paragraph.trycloudflare.com/api/notify_new_porthole"
+  server_url: "https://negotiations-idol-regarded-uni.trycloudflare.com/api/notify_new_porthole"
   retry_count: 3
   timeout_seconds: 10
 
