@@ -2,9 +2,48 @@ from fastapi import APIRouter, HTTPException, Body
 from backend.models import PortholeModel
 from backend.crud import get_all_portholes, get_porthole_by_id, add_porthole, delete_porthole, update_porthole_status
 from typing import Dict, List
+from geopy.geocoders import Nominatim
+from geopy.exc import GeocoderTimedOut, GeocoderUnavailable
 
 router = APIRouter(tags=["Porthole"])
 portholes_router = APIRouter(prefix="/api/portholes")
+
+def coord_into_location(lat: float, lng: float):
+    """
+    위도와 경도로부터 도로명주소를 반환합니다. geopy모듈 사용
+    """
+    try:
+        # geolocator 초기화
+        geolocator = Nominatim(user_agent="South Korea")
+
+        # 위도, 경도 지정
+        location = geolocator.reverse((lat, lng), language='ko')  # 서울시청 좌표
+
+        # 전체 raw 결과 확인
+        raw = location.raw
+
+        # 주소 구성요소 추출
+        address = raw.get('address', {})
+
+        city = address.get('city', '')  #서울
+        if city == '서울':
+            city += '특별'
+        elif city in ['부산', '대구', '인천', '광주', '대전', '울산']:
+            city += '광역'
+
+        borough = address.get('borough', '') # 중구
+        road = address.get('road', '')        # 세종대로
+        # house_number = address.get('house_number', '') # 110
+
+        # 원하는 포맷으로 정리
+        output = f"{city}시 {borough} {road}".strip()
+
+        return output
+
+    except (GeocoderTimedOut, GeocoderUnavailable) as geo_err:
+        return "주소 조회 실패 (지오코더 오류)"
+    except Exception as e:
+        return f"주소 조회 실패: {str(e)}"
 
 @router.post("/api/notify_new_porthole")
 def notify_new_porthole(
@@ -19,7 +58,8 @@ def notify_new_porthole(
         "lat": lat,
         "lng": lng,
         "depth": depth,
-        "status": "발견됨"
+        "status": "발견됨",
+        "location": coord_into_location(lat, lng)
     }
     
     try:

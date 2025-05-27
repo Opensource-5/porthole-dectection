@@ -8,6 +8,7 @@ dependencies = [
     "apscheduler>=3.11.0",
     "fastapi>=0.115.12",
     "folium>=0.19.5",
+    "geopy>=2.4.1",
     "langchain>=0.3.23",
     "langchain-openai>=0.3.13",
     "openai>=1.74.0",
