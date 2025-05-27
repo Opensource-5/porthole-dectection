@@ -94,10 +94,6 @@ import os
 import tempfile
 from openai import OpenAI
 
-import os
-import tempfile
-from openai import OpenAI
-
 def synthesize_alert_audio(alert_message, filename_hint="speech"):
     """
     OpenAI TTS로 알림 메시지 음성 파일 생성 (Echo voice + Custom instructions 적용)
