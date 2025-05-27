@@ -174,7 +174,7 @@ def render_porthole_tab(api_url: str):
                                 image_url = f"{base_url}{porthole_detail['image_path']}"
                                 
                                 # 이미지 표시
-                                st.image(image_url, caption=f"포트홀 ID: {porthole_detail['id']}", use_column_width=True)
+                                st.image(image_url, caption=f"포트홀 ID: {porthole_detail['id']}", use_container_width=True)
                                 
                                 # 이미지 다운로드 링크
                                 st.markdown(f"[원본 이미지 다운로드]({image_url})")
