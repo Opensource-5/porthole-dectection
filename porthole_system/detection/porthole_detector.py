@@ -20,7 +20,10 @@ import numpy as np
 import torch
 from glob import glob
 from typing import Dict, List, Optional, Tuple, Union
-from geopy.geocoders import Nominatim
+import pathlib
+temp = pathlib.WindowsPath
+pathlib.WindowsPath = pathlib.PosixPath
+
 
 # 서버 API 모듈 임포트
 from server_api import PortholeServerAPI
@@ -77,58 +80,24 @@ class PortholeDetector:
         
         # 시각화 설정 불러오기
         self.vis_config = self.config.get('visualization', {})
-        self.class_colors = self.vis_config.get('class_colors', {})
-        # self.box_color = tuple(self.vis_config.get('box_color', [0, 255, 0]))
-        # self.text_color = tuple(self.vis_config.get('text_color', [0, 255, 0]))
+        self.box_color = tuple(self.vis_config.get('box_color', [0, 255, 0]))
+        self.text_color = tuple(self.vis_config.get('text_color', [0, 255, 0]))
         self.text_size = self.vis_config.get('text_size', 0.6)
         self.text_thickness = self.vis_config.get('text_thickness', 2)
         self.box_thickness = self.vis_config.get('box_thickness', 2)
         self.overlay_alpha = self.vis_config.get('overlay_alpha', 0.4)
-        
-        # 위치 설정 불러오기
+          # 위치 설정 불러오기
         self.location = self.config.get('location', {})
         self.default_lat = self.location.get('latitude', 37.5665)
         self.default_lng = self.location.get('longitude', 126.9780)
-    
-    # 색상 불러올 때 클래스 ID에 따라 동적으로 선택
-    def get_class_color(self, class_id):
-        color = self.class_colors.get(str(class_id)) or self.class_colors.get(int(class_id))
-        return tuple(color) if color else (0, 255, 0)  # 기본값 green
-
-    def coord_into_location(self, lat: float, lng: float):
-        """
-        위도와 경도로부터 도로명주소를 반환합니다. geopy모듈 사용
-        """
-        # geolocator 초기화
-        geolocator = Nominatim(user_agent="South Korea")
-
-        # 위도, 경도 지정
-        location = geolocator.reverse((lat, lng), language='ko')  # 서울시청 좌표
-
-        # 전체 raw 결과 확인
-        raw = location.raw
-
-        # 주소 구성요소 추출
-        address = raw.get('address', {})
-
-        country = address.get('country', '')
-        postcode = address.get('postcode', '') # 도로명주소
-
-        city = address.get('city', '')  #서울
-        if city == '서울' :
-            city = city +'특별'
-        elif city == '부산' or '대구' or '인천' or '광주' or '대전' or '울산' :
-            city = city + '광역'
-
-        borough = address.get('borough', '') # 중구
-        road = address.get('road', '')        # 세종대로
-        # house_number = address.get('house_number', '') # 110
-
-        # 원하는 포맷으로 정리
-        output = f"{city}시 {borough} {road}".strip()
-
-        return output
-
+        
+        # 깊이별 색상 설정 (BGR 형식)
+        self.class_colors = [
+            [0, 255, 0],    # 얕은 깊이 (초록색)
+            [0, 255, 255],  # 중간 깊이 (노란색)
+            [0, 0, 255]     # 깊은 깊이 (빨간색)
+        ]
+        
     def load_models(self) -> bool:
         """
         YOLOv5와 MiDaS 모델을 로드합니다.
@@ -201,12 +170,12 @@ class PortholeDetector:
             if detected and pothole_infos:
                 # 여러 포트홀이 감지된 경우, 가장 신뢰도가 높은 하나만 보고
                 best_pothole = max(pothole_infos, key=lambda x: x['confidence'])
+
                 # API 서버로 포트홀 정보 전송
                 send_result = self.server_api.send_pothole_data(
                     best_pothole['lat'],
                     best_pothole['lng'],
-                    best_pothole['depth'],
-                    best_pothole['location']
+                    best_pothole['depth']
                 )
 
                 if send_result and 'porthole_id' in send_result:
@@ -314,8 +283,7 @@ class PortholeDetector:
                     "lat": self.default_lat,  # 설정 파일에서 불러온 기본 위치 정보 사용
                     "lng": self.default_lng,  # 실제 응용에서는 GPS나 위치 정보를 사용해야 함
                     "depth": round(median_depth, 2),
-                    "confidence": float(conf),
-                    "location" : self.coord_into_location(self.default_lat, self.default_lng)
+                    "confidence": float(conf)
                 }
                 pothole_infos.append(pothole_info)
                 pothole_detected = True
@@ -370,7 +338,7 @@ class PortholeDetector:
                 
             x1, y1, x2, y2, conf, cls = box
             x1, y1, x2, y2 = map(int, (x1, y1, x2, y2))
-
+            
             # 깊이 정보 계산
             region = depth_map[y1:y2, x1:x2]
             depth_val = float(np.median(region))    
@@ -389,7 +357,7 @@ class PortholeDetector:
             cv2.rectangle(frame, (x1, y1), (x2, y2), color, self.box_thickness)
             cv2.putText(frame, f'{conf:.2f}', (x1, y1-5), 
                        cv2.FONT_HERSHEY_SIMPLEX, self.text_size, color, self.text_thickness)
-
+            
             # 깊이 정보 표시
             cv2.putText(
                 frame, 
@@ -406,8 +374,7 @@ class PortholeDetector:
                 "lat": self.default_lat,
                 "lng": self.default_lng,
                 "depth": round(depth_val, 2),
-                "confidence": float(conf),
-                "location" : self.coord_into_location(self.default_lat, self.default_lng)
+                "confidence": float(conf)
             })
             
             # 설정에서 불러온 신뢰도 임계값 사용
@@ -473,11 +440,9 @@ class PortholeDetector:
                     self.server_api.send_pothole_data(
                         best_pothole['lat'],
                         best_pothole['lng'],
-                        best_pothole['depth'],
-                        # best_pothole['location']
+                        best_pothole['depth']
                     )
-                    print(f"포트홀 정보 전송 완료: {best_pothole['location']}")
-
+                
                 # 처리된 프레임 표시
                 if display:
                     cv2.imshow('Porthole Detection', processed_frame)
