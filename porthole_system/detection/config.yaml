@@ -14,8 +14,16 @@ models:
     img_size: 416
   midas:
     model_type: "DPT_Hybrid"
+    transform_type: "small_transform"  # small_transform, dpt_transform 등
 
-# 데이터 경로 설정
+# 하드웨어 설정
+device:
+  # 디바이스 우선순위: mps > cuda > cpu
+  use_mps: true      # Apple Silicon (M1/M2) MPS 사용 여부
+  use_cuda: true     # NVIDIA CUDA 사용 여부
+  force_cpu: false   # CPU 강제 사용 여부
+
+# 데이터 경로 설정 (deprecated, legacy용 - 현재 사용 안함)
 data_paths:
   base_dir: "."
   train_images: "train/images/*.jpg"
@@ -29,26 +37,44 @@ data_paths:
 location:
   latitude: 37.5665
   longitude: 126.9780
-  location : "서울특별시 중구 세종대로"
+  address: "서울특별시 중구 세종대로" # 위도 경도에 따른 주소 확인용 (사용 X)
 
+# 깊이 분류 임계값 설정
+depth_classification:
+  shallow_threshold: 500    # 얕은 깊이 임계값 (이하는 얕음)
+  medium_threshold: 1500    # 중간 깊이 임계값 (이하는 중간, 이상은 깊음)
+  
 # 시각화 설정
 visualization:
+  # 깊이별 색상 설정 (BGR 형식)
   class_colors:
-    0: [0, 255, 0]       # green
-    1: [0, 165, 255]     # orange
-    2: [0, 0, 255]       # red
-
-  # box_color: [0, 255, 0]  # BGR 형식 (초록색)
-  # text_color: [0, 255, 0]  # BGR 형식 (초록색)
+    shallow: [0, 255, 0]     # 얕은 깊이 - 초록색
+    medium: [0, 165, 255]    # 중간 깊이 - 주황색  
+    deep: [0, 0, 255]        # 깊은 깊이 - 빨간색
+  
+  # 텍스트 및 박스 스타일
   text_size: 0.6
   text_thickness: 2
   box_thickness: 2
-  depth_colormap: "MAGMA"  # MAGMA, JET, VIRIDIS, PLASMA 등
-  overlay_alpha: 0.4  # 깊이 맵 오버레이 투명도 (0.0-1.0)
+  
+  # 깊이 맵 설정
+  depth_colormap: "MAGMA"    # MAGMA, JET, VIRIDIS, PLASMA 등
+  overlay_alpha: 0.4         # 깊이 맵 오버레이 투명도 (0.0-1.0)
 
 # 웹캠/비디오 설정
 video:
   webcam_source: 0
   frame_width: 640
   frame_height: 480
-  fps: 60
+  fps: 30
+
+# 감지 설정
+detection:
+  min_detection_confidence: 0.3  # 감지 최소 신뢰도
+  send_to_server_confidence: 0.5  # 서버 전송 최소 신뢰도
+  
+# 디버그 설정
+debug:
+  print_detections: true     # 감지 결과 출력 여부
+  print_model_loading: true  # 모델 로딩 정보 출력 여부
+  print_api_responses: true  # API 응답 출력 여부

@@ -114,6 +114,10 @@ def add_porthole(porthole_data: Dict) -> int:
         porthole_id = cursor.lastrowid
         conn.commit()
         conn.close()
+        
+        # None 체크 추가
+        if porthole_id is None:
+            raise ValueError("포트홀 ID를 가져올 수 없습니다")
         return porthole_id
     except Exception as e:
         print(f"add_porthole 오류: {e}")
@@ -225,6 +229,10 @@ def add_car(car_data: Dict) -> int:
         car_id = cursor.lastrowid
         conn.commit()
         conn.close()
+        
+        # None 체크 추가
+        if car_id is None:
+            raise ValueError("차량 ID를 가져올 수 없습니다")
         return car_id
     except Exception as e:
         print(f"add_car 오류: {e}")
@@ -384,7 +392,7 @@ def add_alert(car_id: int, porthole_id: int, distance: float, one_time_only: boo
             cursor.execute("""
                 UPDATE alert SET distance = ?, created_at = ? WHERE id = ?
             """, (distance, datetime.now().isoformat(), existing["id"]))
-            alert_id = existing["id"]
+            alert_id = int(existing["id"])
         else:
             # 새로운 알림 추가
             cursor.execute("""
@@ -394,7 +402,11 @@ def add_alert(car_id: int, porthole_id: int, distance: float, one_time_only: boo
             alert_id = cursor.lastrowid
             
         conn.commit()
-        return alert_id
+        
+        # None 체크 추가
+        if alert_id is None:
+            raise ValueError("알림 ID를 가져올 수 없습니다")
+        return int(alert_id)
     except Exception as e:
         print(f"add_alert 오류: {e}")
         if conn:

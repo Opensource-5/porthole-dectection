@@ -16,5 +16,6 @@ dependencies = [
     "requests>=2.32.3",
     "streamlit>=1.44.1",
     "streamlit-folium>=0.24.1",
+    "ultralytics>=8.3.145",
     "uvicorn>=0.34.1",
 ]
