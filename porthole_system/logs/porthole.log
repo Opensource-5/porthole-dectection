@@ -1,2 +1,4 @@
 2025-05-27 10:47:22,655 - porthole_system - ERROR - 포트홀 목록 조회 중 오류 발생: no such table: porthole
 2025-05-27 10:47:22,656 - porthole_system - INFO - 데이터베이스 테이블이 없습니다. 데이터베이스를 초기화합니다.
+2025-05-27 12:12:05,930 - porthole_system - ERROR - 포트홀 목록 조회 중 오류 발생: no such table: porthole
+2025-05-27 12:12:05,931 - porthole_system - INFO - 데이터베이스 테이블이 없습니다. 데이터베이스를 초기화합니다.
