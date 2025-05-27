@@ -1,7 +1,10 @@
 from fastapi import APIRouter, HTTPException, Body
+import base64
+import os
+from datetime import datetime
 from backend.models import PortholeModel
-from backend.crud import get_all_portholes, get_porthole_by_id, add_porthole, delete_porthole, update_porthole_status
-from typing import Dict, List
+from backend.crud import get_all_portholes, get_porthole_by_id, add_porthole, delete_porthole, update_porthole_status, update_porthole_image_path
+from typing import Dict, List, Optional
 from geopy.geocoders import Nominatim
 from geopy.exc import GeocoderTimedOut, GeocoderUnavailable
 
@@ -45,27 +48,92 @@ def coord_into_location(lat: float, lng: float):
     except Exception as e:
         return f"주소 조회 실패: {str(e)}"
 
+
+def save_porthole_image(image_base64: str, porthole_id: int, image_format: str = "jpg") -> Optional[str]:
+    """
+    포트홀 이미지를 서버에 저장합니다.
+    
+    Args:
+        image_base64: base64로 인코딩된 이미지 데이터
+        porthole_id: 포트홀 ID
+        image_format: 이미지 포맷 (jpg, png)
+        
+    Returns:
+        저장된 이미지 파일 경로 또는 None
+    """
+    try:
+        # 이미지 저장 디렉토리 생성
+        images_dir = "static/porthole_images"
+        os.makedirs(images_dir, exist_ok=True)
+        
+        # 이미지 파일명 생성
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"porthole_{porthole_id}_{timestamp}.{image_format}"
+        filepath = os.path.join(images_dir, filename)
+        
+        # base64 디코딩 및 파일 저장
+        image_data = base64.b64decode(image_base64)
+        with open(filepath, 'wb') as f:
+            f.write(image_data)
+        
+        # 상대 경로 반환 (웹에서 접근 가능한 경로)
+        return f"/{filepath}"
+        
+    except Exception as e:
+        print(f"이미지 저장 중 오류 발생: {e}")
+        return None
+
 @router.post("/api/notify_new_porthole")
 def notify_new_porthole(
     lat: float = Body(..., description="포트홀의 위도 좌표"),
     lng: float = Body(..., description="포트홀의 경도 좌표"), 
-    depth: float = Body(..., description="포트홀의 깊이(mm)")
+    depth: float = Body(..., description="포트홀의 깊이(mm)"),
+    image: Optional[str] = Body(None, description="base64로 인코딩된 포트홀 이미지")
 ):
     """
     감지 시스템에서 전송한 새로운 포트홀 정보를 받아 데이터베이스에 저장합니다.
     """
+    # 이미지가 제공된 경우 먼저 저장
+    image_path = None
+    if image:
+        # 임시 ID로 이미지 저장 (나중에 실제 ID로 업데이트)
+        temp_id = int(datetime.now().timestamp())
+        image_path = save_porthole_image(image, temp_id)
+    
     porthole_data = {
         "lat": lat,
         "lng": lng,
         "depth": depth,
         "status": "발견됨",
-        "location": coord_into_location(lat, lng)
+        "location": coord_into_location(lat, lng),
+        "image_path": image_path
     }
     
     try:
         porthole_id = add_porthole(porthole_data)
+        
+        # 실제 ID로 이미지 파일명 업데이트
+        if image_path and porthole_id:
+            # 새로운 파일명 생성
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"porthole_{porthole_id}_{timestamp}.jpg"
+            new_filepath = f"static/porthole_images/{filename}"
+            
+            # 파일 이름 변경
+            try:
+                import shutil
+                old_filepath = image_path[1:]  # '/' 제거
+                shutil.move(old_filepath, new_filepath)
+                image_path = f"/{new_filepath}"
+                
+                # 데이터베이스에서 이미지 경로 업데이트
+                update_porthole_image_path(porthole_id, image_path)
+            except Exception as e:
+                print(f"이미지 파일명 업데이트 중 오류: {e}")
+        
         return {
             "id": porthole_id,
+            "image_path": image_path,
             "message": "포트홀이 성공적으로 등록되었습니다."
         }
     except Exception as e:

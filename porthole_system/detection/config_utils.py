@@ -78,6 +78,14 @@ DEFAULT_CONFIG = {
         'print_detections': True,
         'print_model_loading': True,
         'print_api_responses': True
+    },
+    'image_capture': {
+        'enabled': True,
+        'save_locally': False,
+        'local_save_path': './captured_images',
+        'image_format': 'jpg',
+        'image_quality': 85,
+        'max_image_size': 1024  # 최대 이미지 크기 (픽셀)
     }
 }
 

@@ -472,11 +472,12 @@ class PortholeDetector:
                               f"신뢰도: {selected_pothole['confidence']:.2f}, " +
                               f"분류: {selected_pothole['depth_class']}")
                         
-                        # 서버로 전송
+                        # 서버로 전송 (이미지 포함)
                         success = self.server_api.send_pothole_data(
                             selected_pothole['lat'],
                             selected_pothole['lng'],
-                            selected_pothole['depth']
+                            selected_pothole['depth'],
+                            frame  # 원본 프레임을 함께 전송
                         )
                         
                         if success:

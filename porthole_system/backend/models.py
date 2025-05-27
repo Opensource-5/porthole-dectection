@@ -11,6 +11,7 @@ class PortholeModel(BaseModel):
     depth: Optional[float] = Field(None, description="포트홀의 깊이(cm)")
     location: Optional[str] = Field(None, description="포트홀의 위치 설명")
     status: str = Field("발견됨", description="포트홀의 상태 (발견됨, 수리중, 수리완료 등)")
+    image_path: Optional[str] = Field(None, description="포트홀 이미지 파일 경로")
 
 class AlertModel(BaseModel):
     car_id: int = Field(..., description="차량 ID")

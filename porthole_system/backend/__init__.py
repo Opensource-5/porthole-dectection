@@ -2,8 +2,10 @@
 백엔드 앱 초기화 모듈
 """
 
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from backend.scheduler import scheduler, monitor_proximity
 from backend.db import init_db
 from contextlib import asynccontextmanager
@@ -57,6 +59,14 @@ app.add_middleware(
 app.include_router(porthole.router)
 app.include_router(car.router)
 app.include_router(alerts.router)
+
+# 정적 파일 서빙 설정 - 포트홀 이미지
+static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
+if os.path.exists(static_dir):
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
+    print(f"정적 파일 서빙 설정 완료: {static_dir}")
+else:
+    print(f"정적 파일 디렉토리가 존재하지 않습니다: {static_dir}")
 
 # 데이터베이스 초기화
 init_db()

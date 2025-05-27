@@ -22,10 +22,12 @@ def get_all_portholes() -> List[Dict]:
         List[Dict]: 포트홀 정보 목록
     """
     try:
-        with db_transaction() as (conn, cursor):
-            cursor.execute("SELECT id, location, depth, date, status, lat, lng FROM porthole")
-            results = cursor.fetchall()
-            return [dict(row) for row in results]
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, location, depth, date, status, lat, lng, image_path FROM porthole")
+        results = cursor.fetchall()
+        conn.close()
+        return [dict(row) for row in results]
     except Exception as e:
         logger.error(f"포트홀 목록 조회 중 오류 발생: {e}")
         
@@ -36,10 +38,12 @@ def get_all_portholes() -> List[Dict]:
             init_db()
             # 초기화 후 다시 시도
             try:
-                with db_transaction() as (conn, cursor):
-                    cursor.execute("SELECT id, location, depth, date, status, lat, lng FROM porthole")
-                    results = cursor.fetchall()
-                    return [dict(row) for row in results]
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute("SELECT id, location, depth, date, status, lat, lng, image_path FROM porthole")
+                results = cursor.fetchall()
+                conn.close()
+                return [dict(row) for row in results]
             except Exception as e2:
                 logger.error(f"데이터베이스 초기화 후에도 조회 중 오류 발생: {e2}")
         
@@ -88,7 +92,7 @@ def add_porthole(porthole_data: Dict) -> int:
     새로운 포트홀 정보를 데이터베이스에 추가합니다.
     
     Args:
-        porthole_data: 포트홀 정보 (위도, 경도, 깊이, 위치, 상태)
+        porthole_data: 포트홀 정보 (위도, 경도, 깊이, 위치, 상태, 이미지 경로)
         
     Returns:
         int: 추가된 포트홀의 ID
@@ -101,14 +105,15 @@ def add_porthole(porthole_data: Dict) -> int:
         current_date = datetime.now().strftime("%Y-%m-%d")
         
         cursor.execute(
-            "INSERT INTO porthole (lat, lng, depth, location, date, status) VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO porthole (lat, lng, depth, location, date, status, image_path) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (
                 porthole_data["lat"], 
                 porthole_data["lng"], 
                 porthole_data.get("depth"), 
                 porthole_data.get("location"), 
                 current_date,
-                porthole_data.get("status", "발견됨")
+                porthole_data.get("status", "발견됨"),
+                porthole_data.get("image_path")
             )
         )
         porthole_id = cursor.lastrowid
@@ -164,6 +169,28 @@ def update_porthole_status(porthole_id: int, new_status: str) -> bool:
         return True
     except Exception as e:
         print(f"update_porthole_status 오류: {e}")
+        return False
+
+def update_porthole_image_path(porthole_id: int, image_path: str) -> bool:
+    """
+    포트홀의 이미지 경로를 업데이트합니다.
+    
+    Args:
+        porthole_id: 포트홀 ID
+        image_path: 이미지 파일 경로
+        
+    Returns:
+        bool: 업데이트 성공 여부
+    """
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE porthole SET image_path = ? WHERE id = ?", (image_path, porthole_id))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"update_porthole_image_path 오류: {e}")
         return False
 
 # ======================================================

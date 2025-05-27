@@ -84,8 +84,19 @@ def render_porthole_tab(api_url: str):
         
         # 데이터프레임 표시
         if filtered_portholes:
+            # 이미지 여부를 표시하기 위해 데이터 전처리
+            for porthole in filtered_portholes:
+                porthole['has_image'] = '✅' if porthole.get('image_path') else '❌'
+            
             df = pd.DataFrame(filtered_portholes)
-            st.dataframe(df, use_container_width=True)
+            
+            # 표시할 컬럼 선택 및 순서 조정
+            display_columns = ['id', 'location', 'status', 'depth', 'has_image', 'date']
+            available_columns = [col for col in display_columns if col in df.columns]
+            if available_columns:
+                df_display = df[available_columns].copy()
+                df_display.columns = ['ID', '위치', '상태', '깊이(mm)', '이미지', '발견일']
+                st.dataframe(df_display, use_container_width=True)
             
             # 포트홀 삭제 폼
             with st.expander("🗑️ 포트홀 삭제"):
@@ -154,6 +165,26 @@ def render_porthole_tab(api_url: str):
                                     st.error(f"요청 중 오류 발생: {str(e)}")
                     
                     with col2:
+                        # 포트홀 이미지 표시
+                        if porthole_detail.get('image_path'):
+                            st.subheader("📸 포트홀 이미지")
+                            try:
+                                # 이미지 URL 생성 (백엔드 서버 주소에 static 경로 추가)
+                                base_url = api_url.replace('/api', '')  # '/api' 제거
+                                image_url = f"{base_url}{porthole_detail['image_path']}"
+                                
+                                # 이미지 표시
+                                st.image(image_url, caption=f"포트홀 ID: {porthole_detail['id']}", use_column_width=True)
+                                
+                                # 이미지 다운로드 링크
+                                st.markdown(f"[원본 이미지 다운로드]({image_url})")
+                                
+                            except Exception as e:
+                                st.error(f"이미지 로딩 중 오류: {str(e)}")
+                                st.write("이미지를 표시할 수 없습니다.")
+                        else:
+                            st.info("이 포트홀에는 이미지가 없습니다.")
+                        
                         # 깊이에 따른 위험도 표시
                         depth = porthole_detail.get('depth', 0)
                         if depth is not None:

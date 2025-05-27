@@ -82,3 +82,12 @@ debug:
   print_detections: true     # 감지 결과 출력 여부
   print_model_loading: true  # 모델 로딩 정보 출력 여부
   print_api_responses: true  # API 응답 출력 여부
+
+# 이미지 캡처 설정
+image_capture:
+  enabled: true              # 이미지 캡처 활성화 여부
+  save_locally: false        # 로컬 저장 여부 (디버그용)
+  local_save_path: "./captured_images"  # 로컬 저장 경로
+  image_format: "jpg"        # 이미지 포맷 (jpg, png)
+  image_quality: 85          # JPEG 품질 (1-100)
+  max_image_size: 1024       # 최대 이미지 크기 (픽셀)

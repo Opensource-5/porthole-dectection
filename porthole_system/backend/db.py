@@ -63,9 +63,18 @@ def init_db():
             depth REAL,                   -- 깊이(cm)
             location TEXT,                -- 위치 설명
             date TEXT,                    -- 발견 날짜
-            status TEXT                   -- 상태 (발견됨, 수리중, 수리완료 등)
+            status TEXT,                  -- 상태 (발견됨, 수리중, 수리완료 등)
+            image_path TEXT               -- 이미지 파일 경로
         )
     ''')
+    
+    # 기존 포트홀 테이블에 image_path 컬럼이 없는 경우 추가
+    try:
+        cursor.execute("ALTER TABLE porthole ADD COLUMN image_path TEXT")
+        print("포트홀 테이블에 image_path 컬럼 추가됨")
+    except sqlite3.OperationalError:
+        # 컬럼이 이미 존재하는 경우 무시
+        pass
     
     # 차량 테이블 생성
     cursor.execute('''
