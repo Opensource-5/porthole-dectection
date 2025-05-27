@@ -61,7 +61,9 @@ DEFAULT_CONFIG = {
         'overlay_alpha': 0.4
     },
     'video': {
+        'input_type': 'webcam',     # 'webcam' or 'file'
         'webcam_source': 0,
+        'video_file_path': '',      # 동영상 파일 경로
         'frame_width': 640,
         'frame_height': 480,
         'fps': 30

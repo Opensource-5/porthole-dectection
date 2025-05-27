@@ -63,7 +63,9 @@ visualization:
 
 # 웹캠/비디오 설정
 video:
+  input_type: "file"           # "webcam" 또는 "file"
   webcam_source: 0
+  video_file_path: "/Users/localgroup/Documents/workspace/porthole-dectection/porthole_system/detection/porthole_video.mp4"            # 동영상 파일 경로 (input_type이 "file"일 때 사용)
   frame_width: 640
   frame_height: 480
   fps: 30

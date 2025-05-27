@@ -30,10 +30,11 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 예시:
-  python main.py                          # 기본 설정으로 실행
-  python main.py --config my_config.yaml  # 사용자 설정 파일 사용
-  python main.py --video-source 1         # 두 번째 카메라 사용
-  python main.py --no-display            # 화면 출력 없이 실행
+  python main.py                              # 기본 설정으로 실행 (웹캠)
+  python main.py --config my_config.yaml      # 사용자 설정 파일 사용
+  python main.py --video-source 1             # 두 번째 카메라 사용
+  python main.py --video-file video.mp4       # 동영상 파일 처리
+  python main.py --no-display                 # 화면 출력 없이 실행
         """
     )
     
@@ -41,6 +42,8 @@ def main():
                        help='설정 파일 경로 (기본: config.yaml)')
     parser.add_argument('--video-source', type=int, default=None, 
                        help='비디오 소스 번호 (기본: 설정 파일 값)')
+    parser.add_argument('--video-file', type=str, default=None,
+                       help='동영상 파일 경로 (이 옵션 사용 시 파일 모드로 실행)')
     parser.add_argument('--no-display', action='store_true', 
                        help='화면에 결과를 표시하지 않음')
     parser.add_argument('--debug', action='store_true', 
@@ -68,11 +71,31 @@ def main():
             })
             print("🐛 디버그 모드가 활성화되었습니다.")
         
-        # 비디오 소스 결정
-        if args.video_source is not None:
+        # 비디오 소스 및 타입 결정
+        if args.video_file:
+            # 명령행에서 동영상 파일이 지정된 경우
+            video_source = args.video_file
+            input_type = "file"
+            if not os.path.exists(args.video_file):
+                print(f"❌ 동영상 파일을 찾을 수 없습니다: {args.video_file}")
+                sys.exit(1)
+        elif args.video_source is not None:
+            # 명령행에서 웹캠 소스가 지정된 경우
             video_source = args.video_source
+            input_type = "webcam"
         else:
-            video_source = get_nested_value(config, 'video.webcam_source', 0)
+            # 설정 파일에서 결정
+            input_type = get_nested_value(config, 'video.input_type', 'webcam')
+            if input_type == "file":
+                video_source = get_nested_value(config, 'video.video_file_path', '')
+                if not video_source:
+                    print("❌ 설정에서 input_type이 'file'이지만 video_file_path가 지정되지 않았습니다.")
+                    sys.exit(1)
+                if not os.path.exists(video_source):
+                    print(f"❌ 설정에 지정된 동영상 파일을 찾을 수 없습니다: {video_source}")
+                    sys.exit(1)
+            else:
+                video_source = get_nested_value(config, 'video.webcam_source', 0)
         
         # 화면 표시 여부
         display = not args.no_display
@@ -88,7 +111,11 @@ def main():
         print("\n" + "="*60)
         print("🎯 포트홀 실시간 감지 시스템")
         print("="*60)
-        print(f"📹 비디오 소스: {video_source}")
+        print(f"📹 입력 타입: {input_type.upper()}")
+        if input_type == "file":
+            print(f"🎬 동영상 파일: {os.path.basename(video_source)}")
+        else:
+            print(f"📹 웹캠 소스: {video_source}")
         print(f"🌐 API 서버: {get_nested_value(config, 'api.server_url', 'N/A')}")
         print(f"🎨 화면 표시: {'ON' if display else 'OFF'}")
         print(f"🔧 설정 파일: {args.config}")
@@ -101,7 +128,10 @@ def main():
         print("="*60)
         
         if display:
-            print("💡 종료하려면 비디오 창에서 'q' 키를 누르세요.")
+            if input_type == "file":
+                print("💡 종료하려면 비디오 창에서 'q' 키를 누르거나 동영상이 끝날 때까지 기다리세요.")
+            else:
+                print("💡 종료하려면 비디오 창에서 'q' 키를 누르세요.")
         else:
             print("💡 종료하려면 Ctrl+C를 누르세요.")
         print()

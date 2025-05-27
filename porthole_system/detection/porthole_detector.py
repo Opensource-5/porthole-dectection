@@ -427,8 +427,18 @@ class PortholeDetector:
             print(f"❌ 비디오 소스를 열 수 없습니다: {source}")
             return
         
+        # 비디오 정보 가져오기
+        is_webcam = isinstance(source, int)
+        if not is_webcam:
+            # 동영상 파일인 경우 정보 출력
+            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            duration = total_frames / fps if fps > 0 else 0
+            if self.print_model_loading:
+                print(f"📹 동영상 정보 - 총 프레임: {total_frames}, FPS: {fps:.2f}, 길이: {duration:.1f}초")
+        
         # 비디오 설정 적용 (웹캠인 경우)
-        if isinstance(source, int):
+        if is_webcam:
             video_config = self.config.get('video', {})
             width = video_config.get('frame_width', 640)
             height = video_config.get('frame_height', 480)
@@ -439,7 +449,7 @@ class PortholeDetector:
             cap.set(cv2.CAP_PROP_FPS, fps)
             
             if self.print_model_loading:
-                print(f"📹 비디오 설정 - 해상도: {width}x{height}, FPS: {fps}")
+                print(f"📹 웹캠 설정 - 해상도: {width}x{height}, FPS: {fps}")
             
         # 모델 로드
         if not self.load_models():
@@ -448,14 +458,20 @@ class PortholeDetector:
             return
             
         print("🎯 실시간 포트홀 감지 시작...")
-        print("💡 종료하려면 'q' 키를 누르세요.")
+        if is_webcam:
+            print("💡 종료하려면 'q' 키를 누르세요.")
+        else:
+            print("💡 종료하려면 'q' 키를 누르거나 동영상이 끝날 때까지 기다리세요.")
         
         try:
             frame_count = 0
             while True:
                 ret, frame = cap.read()
                 if not ret:
-                    print("❌ 프레임을 읽을 수 없습니다.")
+                    if is_webcam:
+                        print("❌ 프레임을 읽을 수 없습니다.")
+                    else:
+                        print("✅ 동영상 처리 완료")
                     break
                     
                 frame_count += 1
@@ -468,7 +484,8 @@ class PortholeDetector:
                     should_send, selected_pothole = self._should_send_to_server(pothole_infos)
                     
                     if should_send and selected_pothole:
-                        print(f"🕳️  새로운 포트홀 감지! 깊이: {selected_pothole['depth']}mm, " +
+                        frame_info = f"프레임 {frame_count}" if not is_webcam else ""
+                        print(f"🕳️  새로운 포트홀 감지! {frame_info} 깊이: {selected_pothole['depth']}mm, " +
                               f"신뢰도: {selected_pothole['confidence']:.2f}, " +
                               f"분류: {selected_pothole['depth_class']}")
                         
@@ -495,13 +512,26 @@ class PortholeDetector:
                 # 처리된 프레임 표시
                 if display:
                     # 프레임 정보 표시
-                    cv2.putText(processed_frame, f'Frame: {frame_count}', (10, 30), 
+                    frame_text = f'Frame: {frame_count}'
+                    if not is_webcam:
+                        # 동영상 파일인 경우 진행률 표시
+                        progress = (frame_count / total_frames) * 100 if total_frames > 0 else 0
+                        frame_text += f' ({progress:.1f}%)'
+                    
+                    cv2.putText(processed_frame, frame_text, (10, 30), 
                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
                     
                     cv2.imshow('Porthole Detection System', processed_frame)
                     
-                    # 'q' 키를 누르면 종료
-                    key = cv2.waitKey(1) & 0xFF
+                    # 키 입력 처리
+                    if is_webcam:
+                        # 웹캠: 실시간이므로 짧은 대기
+                        key = cv2.waitKey(1) & 0xFF
+                    else:
+                        # 동영상 파일: 적절한 속도로 재생
+                        wait_time = max(1, int(1000 / fps)) if fps > 0 else 30
+                        key = cv2.waitKey(wait_time) & 0xFF
+                    
                     if key == ord('q'):
                         print("👋 사용자 종료 요청")
                         break
@@ -514,4 +544,7 @@ class PortholeDetector:
             cap.release()
             if display:
                 cv2.destroyAllWindows()
-            print("✅ 실시간 포트홀 감지 종료")
+            if is_webcam:
+                print("✅ 실시간 포트홀 감지 종료")
+            else:
+                print("✅ 동영상 파일 처리 종료")
