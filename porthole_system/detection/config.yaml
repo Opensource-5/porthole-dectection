@@ -29,11 +29,17 @@ data_paths:
 location:
   latitude: 37.5665
   longitude: 126.9780
+  location : "서울특별시 중구 세종대로"
 
 # 시각화 설정
 visualization:
-  box_color: [0, 255, 0]  # BGR 형식 (초록색)
-  text_color: [0, 255, 0]  # BGR 형식 (초록색)
+  class_colors:
+    0: [0, 255, 0]       # green
+    1: [0, 165, 255]     # orange
+    2: [0, 0, 255]       # red
+
+  # box_color: [0, 255, 0]  # BGR 형식 (초록색)
+  # text_color: [0, 255, 0]  # BGR 형식 (초록색)
   text_size: 0.6
   text_thickness: 2
   box_thickness: 2

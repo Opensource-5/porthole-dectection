@@ -260,6 +260,10 @@ def render_alert_tab(api_url: str):
                                 
                     # 음성 재생 버튼
                     if 'OPENAI_API_KEY' in os.environ:
+                        # alert_audio_cache가 초기화되었는지 확인
+                        if "alert_audio_cache" not in st.session_state:
+                            st.session_state.alert_audio_cache = {}
+                            
                         # 이미 캐시에 있는지 확인
                         audio_path = st.session_state.alert_audio_cache.get(alert_id)
                         

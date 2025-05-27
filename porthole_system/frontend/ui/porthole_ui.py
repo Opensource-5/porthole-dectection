@@ -159,10 +159,8 @@ def render_porthole_tab(api_url: str):
                         if depth is not None:
                             st.subheader("포트홀 깊이 시각화")
                             if depth > 2000:
-                            if depth > 2000:
                                 color = "red"
                                 risk = "높음"
-                            elif depth > 1000:
                             elif depth > 1000:
                                 color = "orange"
                                 risk = "중간"
