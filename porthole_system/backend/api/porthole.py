@@ -62,25 +62,37 @@ def save_porthole_image(image_base64: str, porthole_id: int, image_format: str =
         저장된 이미지 파일 경로 또는 None
     """
     try:
+        print(f"📁 이미지 저장 함수 시작: porthole_id={porthole_id}")
+        
         # 이미지 저장 디렉토리 생성
         images_dir = "static/porthole_images"
         os.makedirs(images_dir, exist_ok=True)
+        print(f"📁 디렉토리 확인/생성 완료: {images_dir}")
         
         # 이미지 파일명 생성
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"porthole_{porthole_id}_{timestamp}.{image_format}"
         filepath = os.path.join(images_dir, filename)
+        print(f"📝 파일 경로 생성: {filepath}")
         
         # base64 디코딩 및 파일 저장
+        print("🔄 base64 디코딩 시작...")
         image_data = base64.b64decode(image_base64)
+        print(f"✅ 디코딩 완료, 데이터 크기: {len(image_data)} bytes")
+        
         with open(filepath, 'wb') as f:
             f.write(image_data)
+        print(f"💾 파일 저장 완료: {filepath}")
         
         # 상대 경로 반환 (웹에서 접근 가능한 경로)
-        return f"/{filepath}"
+        web_path = f"/{filepath}"
+        print(f"🌐 웹 경로 반환: {web_path}")
+        return web_path
         
     except Exception as e:
-        print(f"이미지 저장 중 오류 발생: {e}")
+        print(f"❌ 이미지 저장 중 오류 발생: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 @router.post("/api/notify_new_porthole")
@@ -93,12 +105,19 @@ def notify_new_porthole(
     """
     감지 시스템에서 전송한 새로운 포트홀 정보를 받아 데이터베이스에 저장합니다.
     """
+    print(f"🔄 포트홀 정보 수신: lat={lat}, lng={lng}, depth={depth}")
+    print(f"📸 이미지 데이터 수신 여부: {'예' if image else '아니오'}")
+    if image:
+        print(f"📏 이미지 데이터 크기: {len(image)} 문자")
+    
     # 이미지가 제공된 경우 먼저 저장
     image_path = None
     if image:
+        print("💾 이미지 저장 시작...")
         # 임시 ID로 이미지 저장 (나중에 실제 ID로 업데이트)
         temp_id = int(datetime.now().timestamp())
         image_path = save_porthole_image(image, temp_id)
+        print(f"💾 이미지 저장 결과: {image_path}")
     
     porthole_data = {
         "lat": lat,
