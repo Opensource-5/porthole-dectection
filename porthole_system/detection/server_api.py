@@ -42,17 +42,17 @@ class PortholeServerAPI:
         # 디버그 설정
         self.print_api_responses = get_nested_value(self.config, 'debug.print_api_responses', True)
     
-    def send_pothole_data(self, lat: float, lng: float, depth: float) -> Optional[Dict]:
+    def send_pothole_data(self, lat: float, lng: float, depth: float) -> bool:
         """
         새로운 포트홀 정보를 API 서버로 전송합니다.
         
         Args:
             lat: 위도
             lng: 경도
-            depth: 포트홀 깊이(cm)
+            depth: 포트홀 깊이(mm)
             
         Returns:
-            API 서버의 응답 또는 None (실패 시)
+            bool: 전송 성공 여부
         """
         try:
             # 이미 전송된 포트홀인지 확인 (위도/경도 기반)
@@ -60,7 +60,7 @@ class PortholeServerAPI:
             if location_key in self.sent_potholes:
                 if self.print_api_responses:
                     print(f"ℹ️  이미 전송된 포트홀 위치입니다: {location_key}")
-                return None
+                return False
                 
             payload = {
                 "lat": lat,
@@ -87,7 +87,7 @@ class PortholeServerAPI:
                         
                         # 전송 완료된 위치 기록
                         self.sent_potholes.add(location_key)
-                        return result
+                        return True
                     else:
                         if self.print_api_responses:
                             print(f"❌ 포트홀 정보 전송 실패. 상태 코드: {response.status_code}")
@@ -105,12 +105,12 @@ class PortholeServerAPI:
             
             if self.print_api_responses:
                 print(f"❌ 모든 재시도 실패. 포트홀 정보 전송을 포기합니다.")
-            return None
+            return False
 
         except Exception as e:
             if self.print_api_responses:
                 print(f"❌ 서버 전송 중 예외 발생: {e}")
-            return None
+            return False
     
     def clear_sent_cache(self) -> None:
         """전송된 포트홀 캐시를 초기화합니다."""

@@ -18,7 +18,9 @@ import cv2
 import numpy as np
 import torch
 import pathlib
-from typing import Dict, List, Optional, Tuple, Union, Any
+import time
+import math
+from typing import Dict, List, Optional, Tuple, Union, Any, Set
 
 # Windows 경로 호환성을 위한 설정
 temp = pathlib.WindowsPath
@@ -65,6 +67,17 @@ class PortholeDetector:
         # 감지 설정
         self.min_detection_confidence = get_nested_value(self.config, 'detection.min_detection_confidence', 0.3)
         self.send_to_server_confidence = get_nested_value(self.config, 'detection.send_to_server_confidence', 0.5)
+        
+        # 중복 전송 방지 설정
+        self.min_send_interval = get_nested_value(self.config, 'detection.min_send_interval', 5.0)
+        self.position_tolerance = get_nested_value(self.config, 'detection.position_tolerance', 0.0001)
+        self.max_sent_cache_size = get_nested_value(self.config, 'detection.max_sent_cache_size', 100)
+        self.duplicate_detection_distance = get_nested_value(self.config, 'detection.duplicate_detection_distance', 50)
+        
+        # 중복 방지를 위한 내부 상태
+        self.last_send_time = 0
+        self.recent_detections: List[Dict] = []  # 최근 감지된 포트홀들
+        self.sent_locations: Set[Tuple[float, float]] = set()  # 전송된 위치들
         
         # 서버 API 인스턴스 생성 또는 전달받은 것 사용
         self.server_api = server_api if server_api else PortholeServerAPI(self.config)
@@ -152,7 +165,9 @@ class PortholeDetector:
             # MiDaS 모델 로드 (깊이 추정용)
             midas = torch.hub.load("intel-isl/MiDaS", self.midas_model_type)
             midas.to(device)
-            midas.eval()            # MiDaS 입력 이미지 변환 함수 로딩
+            midas.eval()
+            
+            # MiDaS 입력 이미지 변환 함수 로딩
             midas_transforms = torch.hub.load("intel-isl/MiDaS", "transforms")
             
             # transform 타입에 따라 적절한 변환 선택
@@ -196,6 +211,105 @@ class PortholeDetector:
             return "medium", self.class_colors['medium']
         else:
             return "deep", self.class_colors['deep']
+    
+    def _is_duplicate_position(self, lat: float, lng: float) -> bool:
+        """
+        이미 전송된 위치인지 확인합니다.
+        
+        Args:
+            lat: 위도
+            lng: 경도
+            
+        Returns:
+            bool: 중복 위치 여부
+        """
+        for sent_lat, sent_lng in self.sent_locations:
+            if (abs(lat - sent_lat) < self.position_tolerance and 
+                abs(lng - sent_lng) < self.position_tolerance):
+                return True
+        return False
+    
+    def _add_sent_position(self, lat: float, lng: float) -> None:
+        """
+        전송된 위치를 캐시에 추가합니다.
+        
+        Args:
+            lat: 위도
+            lng: 경도
+        """
+        # 캐시 크기 제한
+        if len(self.sent_locations) >= self.max_sent_cache_size:
+            # 가장 오래된 항목 제거 (간단히 첫 번째 항목 제거)
+            self.sent_locations.pop()
+        
+        self.sent_locations.add((lat, lng))
+    
+    def _is_duplicate_detection(self, bbox: List[int]) -> bool:
+        """
+        프레임 내에서 중복 감지인지 확인합니다.
+        
+        Args:
+            bbox: 바운딩 박스 [x1, y1, x2, y2]
+            
+        Returns:
+            bool: 중복 감지 여부
+        """
+        x1, y1, x2, y2 = bbox
+        center_x = (x1 + x2) / 2
+        center_y = (y1 + y2) / 2
+        
+        for detection in self.recent_detections:
+            det_bbox = detection['bbox']
+            det_x1, det_y1, det_x2, det_y2 = det_bbox
+            det_center_x = (det_x1 + det_x2) / 2
+            det_center_y = (det_y1 + det_y2) / 2
+            
+            # 거리 계산
+            distance = math.sqrt((center_x - det_center_x)**2 + (center_y - det_center_y)**2)
+            
+            if distance < self.duplicate_detection_distance:
+                return True
+        
+        return False
+    
+    def _should_send_to_server(self, pothole_infos: List[Dict]) -> Tuple[bool, Optional[Dict]]:
+        """
+        서버로 전송할지 결정하고 전송할 포트홀을 선택합니다.
+        
+        Args:
+            pothole_infos: 감지된 포트홀 정보 리스트
+            
+        Returns:
+            (전송 여부, 선택된 포트홀 정보)
+        """
+        current_time = time.time()
+        
+        # 최소 전송 간격 확인
+        if current_time - self.last_send_time < self.min_send_interval:
+            return False, None
+        
+        # 서버 전송 임계값 이상의 포트홀만 필터링
+        high_confidence_potholes = [
+            p for p in pothole_infos 
+            if p['confidence'] >= self.send_to_server_confidence
+        ]
+        
+        if not high_confidence_potholes:
+            return False, None
+        
+        # 중복 위치가 아닌 포트홀만 필터링
+        new_potholes = []
+        for pothole in high_confidence_potholes:
+            if not self._is_duplicate_position(pothole['lat'], pothole['lng']):
+                new_potholes.append(pothole)
+        
+        if not new_potholes:
+            return False, None
+        
+        # 가장 신뢰도가 높은 포트홀 선택
+        best_pothole = max(new_potholes, key=lambda x: x['confidence'])
+        
+        return True, best_pothole
     
     def detect_from_frame(self, frame: np.ndarray) -> Tuple[bool, List[Dict], np.ndarray]:
         """
@@ -275,7 +389,15 @@ class PortholeDetector:
                     "depth_class": depth_class,
                     "bbox": [x1, y1, x2, y2]
                 }
-                infos.append(pothole_info)
+                
+                # 중복 감지 체크 (같은 프레임 내에서)
+                if not self._is_duplicate_detection([x1, y1, x2, y2]):
+                    infos.append(pothole_info)
+                    
+                    # 최근 감지 목록에 추가 (캐시 크기 제한)
+                    self.recent_detections.append(pothole_info)
+                    if len(self.recent_detections) > 10:  # 최근 10개만 유지
+                        self.recent_detections.pop(0)
                 
                 # 서버 전송 임계값 이상이면 감지됨으로 표시
                 if conf >= self.send_to_server_confidence:
@@ -341,28 +463,33 @@ class PortholeDetector:
                 # 프레임에서 포트홀 감지 및 시각화
                 detected, pothole_infos, processed_frame = self.detect_from_frame(frame)
                 
-                # 포트홀이 감지된 경우 서버로 전송
+                # 포트홀이 감지된 경우 서버로 전송 여부 결정
                 if detected and pothole_infos:
-                    # 서버 전송 임계값 이상의 포트홀만 필터링
-                    high_confidence_potholes = [
-                        p for p in pothole_infos 
-                        if p['confidence'] >= self.send_to_server_confidence
-                    ]
+                    should_send, selected_pothole = self._should_send_to_server(pothole_infos)
                     
-                    if high_confidence_potholes:
-                        # 가장 신뢰도가 높은 포트홀 정보 선택
-                        best_pothole = max(high_confidence_potholes, key=lambda x: x['confidence'])
-                        
-                        print(f"🕳️  포트홀 감지! 깊이: {best_pothole['depth']}mm, " +
-                              f"신뢰도: {best_pothole['confidence']:.2f}, " +
-                              f"분류: {best_pothole['depth_class']}")
+                    if should_send and selected_pothole:
+                        print(f"🕳️  새로운 포트홀 감지! 깊이: {selected_pothole['depth']}mm, " +
+                              f"신뢰도: {selected_pothole['confidence']:.2f}, " +
+                              f"분류: {selected_pothole['depth_class']}")
                         
                         # 서버로 전송
-                        self.server_api.send_pothole_data(
-                            best_pothole['lat'],
-                            best_pothole['lng'],
-                            best_pothole['depth']
+                        success = self.server_api.send_pothole_data(
+                            selected_pothole['lat'],
+                            selected_pothole['lng'],
+                            selected_pothole['depth']
                         )
+                        
+                        if success:
+                            # 전송 성공 시 위치 캐시에 추가
+                            self._add_sent_position(selected_pothole['lat'], selected_pothole['lng'])
+                            self.last_send_time = time.time()
+                            print(f"✅ 서버 전송 완료")
+                        else:
+                            print(f"❌ 서버 전송 실패")
+                    elif pothole_infos:
+                        # 전송하지 않은 이유 출력 (디버깅용)
+                        if self.print_detections:
+                            print(f"📍 포트홀 감지됨 (전송 안함): 중복 또는 시간 간격 미충족")
                 
                 # 처리된 프레임 표시
                 if display:

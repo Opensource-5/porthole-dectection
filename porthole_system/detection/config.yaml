@@ -72,6 +72,10 @@ video:
 detection:
   min_detection_confidence: 0.3  # 감지 최소 신뢰도
   send_to_server_confidence: 0.5  # 서버 전송 최소 신뢰도
+  min_send_interval: 5.0          # 최소 전송 간격 (초)
+  position_tolerance: 0.0001      # 위치 허용 오차 (도)
+  max_sent_cache_size: 100        # 전송된 위치 캐시 크기
+  duplicate_detection_distance: 50  # 중복 감지 거리 (픽셀)
   
 # 디버그 설정
 debug:

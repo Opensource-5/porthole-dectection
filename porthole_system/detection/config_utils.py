@@ -68,7 +68,11 @@ DEFAULT_CONFIG = {
     },
     'detection': {
         'min_detection_confidence': 0.3,
-        'send_to_server_confidence': 0.5
+        'send_to_server_confidence': 0.5,
+        'min_send_interval': 5.0,
+        'position_tolerance': 0.0001,
+        'max_sent_cache_size': 100,
+        'duplicate_detection_distance': 50
     },
     'debug': {
         'print_detections': True,
