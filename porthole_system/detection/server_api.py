@@ -134,6 +134,7 @@ class PortholeServerAPI:
             lat: 위도
             lng: 경도
             depth: 포트홀 깊이(mm)
+            frame: 포트홀이 감지된 영상 프레임 (선택사항)
             
         Returns:
             bool: 전송 성공 여부
@@ -152,8 +153,26 @@ class PortholeServerAPI:
                 "depth": depth,
             }
             
+            # 이미지 처리
+            if frame is not None and self.image_capture_enabled:
+                # 로컬 저장 (디버그용)
+                if self.save_locally:
+                    self._save_image_locally(frame, lat, lng)
+                
+                # 이미지를 base64로 인코딩하여 payload에 추가
+                image_base64 = self._encode_image(frame)
+                if image_base64:
+                    payload["image"] = image_base64
+                    payload["image_format"] = self.image_format
+                    if self.print_api_responses:
+                        print(f"📸 포트홀 이미지가 포함되어 전송됩니다.")
+                else:
+                    if self.print_api_responses:
+                        print(f"⚠️  이미지 인코딩에 실패했습니다. 텍스트 데이터만 전송됩니다.")
+            
             if self.print_api_responses:
-                print(f"📡 서버로 포트홀 정보 전송 중: 위도={lat}, 경도={lng}, 깊이={depth}mm")
+                data_size = len(str(payload))
+                print(f"📡 서버로 포트홀 정보 전송 중: 위도={lat}, 경도={lng}, 깊이={depth}mm (데이터 크기: {data_size:,} bytes)")
             
             for attempt in range(self.retry_count):
                 try:
@@ -167,15 +186,20 @@ class PortholeServerAPI:
                         result = response.json()
                         if self.print_api_responses:
                             print(f"✅ 포트홀 정보가 성공적으로 서버에 전송되었습니다.")
-                            print(f"📄 서버 응답: {result}")
+                            if "message" in result:
+                                print(f"   서버 응답: {result['message']}")
                         
                         # 전송 완료된 위치 기록
                         self.sent_potholes.add(location_key)
                         return True
                     else:
                         if self.print_api_responses:
-                            print(f"❌ 포트홀 정보 전송 실패. 상태 코드: {response.status_code}")
-                            print(f"응답 내용: {response.text}")
+                            print(f"❌ 서버 응답 오류 (시도 {attempt+1}/{self.retry_count}): {response.status_code}")
+                            try:
+                                error_detail = response.json()
+                                print(f"   오류 세부사항: {error_detail}")
+                            except:
+                                print(f"   응답 내용: {response.text[:200]}...")
                         
                 except requests.RequestException as e:
                     if self.print_api_responses:
