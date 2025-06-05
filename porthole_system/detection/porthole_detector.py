@@ -11,6 +11,9 @@
 1. YOLOv5를 사용한 포트홀 객체 탐지
 2. MiDaS를 사용한 깊이 추정
 3. 실시간 비디오 스트림 처리
+4. 이미지 파일에서 포트홀 감지
+5. 일괄 이미지 처리
+6. 디렉토리 내 모든 이미지 처리
 """
 
 import os
@@ -20,6 +23,7 @@ import torch
 import pathlib
 import time
 import math
+import csv
 from typing import Dict, List, Optional, Tuple, Union, Any, Set
 
 # Windows 경로 호환성을 위한 설정
@@ -38,7 +42,7 @@ device: Optional[torch.device] = None
 
 
 class PortholeDetector:
-    """포트홀 감지 및 처리를 위한 클래스 (실시간 웹캠 전용)"""
+    """포트홀 감지 및 처리를 위한 클래스 (웹캠, 비디오, 이미지 지원)"""
     
     def __init__(self, config: Optional[Dict] = None, server_api: Optional[PortholeServerAPI] = None):
         """
@@ -61,8 +65,8 @@ class PortholeDetector:
         self.midas_transform_type = get_nested_value(self.config, 'models.midas.transform_type', "small_transform")
         
         # 깊이 분류 임계값
-        self.shallow_threshold = get_nested_value(self.config, 'depth_classification.shallow_threshold', 500)
-        self.medium_threshold = get_nested_value(self.config, 'depth_classification.medium_threshold', 1500)
+        self.shallow_threshold = get_nested_value(self.config, 'depth_classification.shallow_threshold', 5)
+        self.medium_threshold = get_nested_value(self.config, 'depth_classification.medium_threshold', 10)
         
         # 감지 설정
         self.min_detection_confidence = get_nested_value(self.config, 'detection.min_detection_confidence', 0.3)
@@ -597,3 +601,212 @@ class PortholeDetector:
                 print("✅ 실시간 포트홀 감지 종료")
             else:
                 print("✅ 동영상 파일 처리 종료")
+    
+    def detect_from_image(self, image_path: str, save_result: bool = False, output_dir: str = "results") -> Tuple[bool, List[Dict], Optional[np.ndarray]]:
+        """
+        이미지 파일에서 포트홀을 감지하고 시각화합니다.
+        
+        Args:
+            image_path: 입력 이미지 파일 경로
+            save_result: 결과 이미지를 저장할지 여부
+            output_dir: 결과 저장 디렉토리
+            
+        Returns:
+            (감지 여부, 포트홀 정보 리스트, 시각화된 이미지 또는 None)
+        """
+        # 이미지 파일 존재 확인
+        if not os.path.exists(image_path):
+            print(f"❌ 이미지 파일을 찾을 수 없습니다: {image_path}")
+            return False, [], None
+        
+        # 모델 로드 확인
+        if not self.load_models():
+            return False, [], None
+        
+        # 전역 변수 None 체크
+        if yolo_model is None or midas is None or transform is None or device is None:
+            print("❌ 모델이 제대로 로드되지 않았습니다.")
+            return False, [], None
+
+        try:
+            # 이미지 로드
+            frame = cv2.imread(image_path)
+            if frame is None:
+                print(f"❌ 이미지를 읽을 수 없습니다: {image_path}")
+                return False, [], None
+            
+            if self.print_detections:
+                print(f"📸 이미지 분석 시작: {image_path}")
+            
+            # 프레임에서 포트홀 감지 및 시각화
+            detected, pothole_infos, processed_frame = self.detect_from_frame(frame)
+            
+            # 결과 저장
+            if save_result and processed_frame is not None:
+                os.makedirs(output_dir, exist_ok=True)
+                
+                # 입력 파일명에서 확장자 분리
+                base_name = os.path.splitext(os.path.basename(image_path))[0]
+                output_path = os.path.join(output_dir, f"{base_name}_detected.jpg")
+                
+                cv2.imwrite(output_path, processed_frame)
+                print(f"💾 결과 이미지 저장: {output_path}")
+            
+            # 감지 결과 출력
+            if detected and pothole_infos:
+                print(f"🕳️  포트홀 감지됨! 총 {len(pothole_infos)}개")
+                for i, info in enumerate(pothole_infos, 1):
+                    print(f"  {i}. 깊이: {info['depth']}mm, 신뢰도: {info['confidence']:.2f}, 분류: {info['depth_class']}")
+            else:
+                print("✅ 포트홀이 감지되지 않았습니다.")
+            
+            return detected, pothole_infos, processed_frame
+            
+        except Exception as e:
+            print(f"❌ 이미지 처리 중 오류 발생: {e}")
+            return False, [], None
+    
+    def process_image_batch(self, image_paths: List[str], save_results: bool = False, output_dir: str = "results") -> Dict[str, Tuple[bool, List[Dict]]]:
+        """
+        여러 이미지 파일에서 포트홀을 일괄 감지합니다.
+        
+        Args:
+            image_paths: 처리할 이미지 파일 경로 리스트
+            save_results: 결과 이미지들을 저장할지 여부
+            output_dir: 결과 저장 디렉토리
+            
+        Returns:
+            Dict[str, Tuple[bool, List[Dict]]]: 파일별 감지 결과
+        """
+        results = {}
+        total_files = len(image_paths)
+        
+        print(f"📁 일괄 처리 시작: {total_files}개 이미지")
+        
+        for i, image_path in enumerate(image_paths, 1):
+            print(f"\n[{i}/{total_files}] 처리 중: {os.path.basename(image_path)}")
+            
+            detected, pothole_infos, _ = self.detect_from_image(
+                image_path, save_results, output_dir
+            )
+            
+            results[image_path] = (detected, pothole_infos)
+        
+        # 전체 결과 요약
+        total_detections = sum(1 for detected, _ in results.values() if detected)
+        total_potholes = sum(len(infos) for _, infos in results.values())
+        
+        print(f"\n📊 일괄 처리 완료!")
+        print(f"  - 총 처리 파일: {total_files}개")
+        print(f"  - 포트홀 감지된 파일: {total_detections}개")
+        print(f"  - 총 감지된 포트홀: {total_potholes}개")
+        
+        return results
+    
+    def process_directory(self, directory_path: str, extensions: Optional[List[str]] = None, save_results: bool = False, output_dir: str = "results") -> Dict[str, Tuple[bool, List[Dict]]]:
+        """
+        디렉토리 내의 모든 이미지 파일에서 포트홀을 감지합니다.
+        
+        Args:
+            directory_path: 이미지가 있는 디렉토리 경로
+            extensions: 처리할 이미지 확장자 리스트 (기본값: 일반적인 이미지 확장자들)
+            save_results: 결과 이미지들을 저장할지 여부
+            output_dir: 결과 저장 디렉토리
+            
+        Returns:
+            Dict[str, Tuple[bool, List[Dict]]]: 파일별 감지 결과
+        """
+        if extensions is None:
+            extensions = ['.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif', '.webp']
+        
+        if not os.path.exists(directory_path):
+            print(f"❌ 디렉토리를 찾을 수 없습니다: {directory_path}")
+            return {}
+        
+        # 이미지 파일들 수집
+        image_paths = []
+        for ext in extensions:
+            pattern = os.path.join(directory_path, f"*{ext}")
+            image_paths.extend([f for f in pathlib.Path(directory_path).glob(f"*{ext}")])
+            # 대소문자 구분 없이 검색
+            pattern_upper = os.path.join(directory_path, f"*{ext.upper()}")
+            image_paths.extend([f for f in pathlib.Path(directory_path).glob(f"*{ext.upper()}")])
+        
+        # 중복 제거 및 문자열로 변환
+        image_paths = list(set(str(p) for p in image_paths))
+        
+        if not image_paths:
+            print(f"❌ 디렉토리에서 이미지 파일을 찾을 수 없습니다: {directory_path}")
+            print(f"지원하는 확장자: {', '.join(extensions)}")
+            return {}
+        
+        print(f"📂 디렉토리에서 {len(image_paths)}개의 이미지 파일을 찾았습니다.")
+        
+        return self.process_image_batch(image_paths, save_results, output_dir)
+    
+    def save_results_to_csv(self, results: Dict[str, Tuple[bool, List[Dict]]], output_path: str = "detection_results.csv") -> None:
+        """
+        포트홀 감지 결과를 CSV 파일로 저장합니다.
+        
+        Args:
+            results: process_image_batch 또는 process_directory의 결과
+            output_path: 저장할 CSV 파일 경로
+        """
+        try:
+            with open(output_path, 'w', newline='', encoding='utf-8') as csvfile:
+                writer = csv.writer(csvfile)
+                
+                # CSV 헤더 작성
+                writer.writerow(['filename', 'depth_mm', 'confidence', 'depth_class'])
+                
+                # 각 이미지의 결과 처리
+                for image_path, (detected, pothole_infos) in results.items():
+                    filename = os.path.basename(image_path)
+                    
+                    if detected and pothole_infos:
+                        # 각 포트홀에 대해 행 추가
+                        for pothole_info in pothole_infos:
+                            depth = pothole_info.get('depth', 0.0)
+                            confidence = pothole_info.get('confidence', 0.0)
+                            depth_class = pothole_info.get('depth_class', 'unknown')
+                            
+                            writer.writerow([filename, depth, confidence, depth_class])
+                    else:
+                        # 포트홀이 감지되지 않은 경우
+                        writer.writerow([filename, 0.0, 0.0, 'none'])
+                        
+            print(f"✅ 감지 결과가 CSV 파일로 저장되었습니다: {output_path}")
+            
+        except Exception as e:
+            print(f"❌ CSV 파일 저장 중 오류 발생: {e}")
+    
+    def process_directory_with_csv(self, directory_path: str, extensions: Optional[List[str]] = None, 
+                                 save_results: bool = False, output_dir: str = "results", 
+                                 save_csv: bool = True, csv_filename: str = "detection_results.csv") -> Dict[str, Tuple[bool, List[Dict]]]:
+        """
+        디렉토리 내의 모든 이미지 파일에서 포트홀을 감지하고 결과를 CSV로 저장합니다.
+        
+        Args:
+            directory_path: 이미지가 있는 디렉토리 경로
+            extensions: 처리할 이미지 확장자 리스트
+            save_results: 결과 이미지들을 저장할지 여부
+            output_dir: 결과 저장 디렉토리
+            save_csv: CSV 파일로 저장할지 여부
+            csv_filename: CSV 파일명
+            
+        Returns:
+            Dict[str, Tuple[bool, List[Dict]]]: 파일별 감지 결과
+        """
+        # 기존 process_directory 호출
+        results = self.process_directory(directory_path, extensions, save_results, output_dir)
+        
+        # CSV 저장이 요청된 경우
+        if save_csv and results:
+            csv_path = os.path.join(output_dir, csv_filename)
+            
+            # 출력 디렉토리가 존재하지 않으면 생성
+            os.makedirs(output_dir, exist_ok=True)
+            
+            self.save_results_to_csv(results, csv_path)
+        
+        return results

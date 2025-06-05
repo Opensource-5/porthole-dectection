@@ -41,8 +41,8 @@ location:
 
 # 깊이 분류 임계값 설정
 depth_classification:
-  shallow_threshold: 500    # 얕은 깊이 임계값 (이하는 얕음)
-  medium_threshold: 1500    # 중간 깊이 임계값 (이하는 중간, 이상은 깊음)
+  shallow_threshold: 5    # 얕은 깊이 임계값 (이하는 얕음)
+  medium_threshold: 15    # 중간 깊이 임계값 (이하는 중간, 이상은 깊음)
   
 # 시각화 설정
 visualization:
