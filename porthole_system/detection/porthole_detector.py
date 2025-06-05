@@ -368,7 +368,7 @@ class PortholeDetector:
                 region = depth_map[y1:y2, x1:x2]
                 if region.size > 0:
                     # 바운딩 박스의 중앙 영역 (포트홀 중심부) - 15%
-                    center_margin = 0.15  # 중앙 15% 영역
+                    center_margin = 0.5  # 중앙 15% 영역
                     h, w = region.shape
                     center_h_start = int(h * (0.5 - center_margin/2))
                     center_h_end = int(h * (0.5 + center_margin/2))
@@ -379,7 +379,7 @@ class PortholeDetector:
                     center_depth = float(np.median(center_region)) if center_region.size > 0 else 0.0
                     
                     # 바운딩 박스의 가장자리 영역 (도로 표면) - 15%
-                    edge_margin = 0.15  # 가장자리 15% 영역
+                    edge_margin = 0.5  # 가장자리 15% 영역
                     edge_regions = []
                     
                     # 상단 가장자리
