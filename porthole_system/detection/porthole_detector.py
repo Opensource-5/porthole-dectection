@@ -360,10 +360,59 @@ class PortholeDetector:
                 if conf < self.min_detection_confidence:
                     continue
                 
-                # 깊이 정보 계산
+                # 깊이 정보 계산 - 중앙부와 가장자리 깊이 차이 이용
                 region = depth_map[y1:y2, x1:x2]
                 if region.size > 0:
-                    depth_val = float(np.median(region))
+                    # 바운딩 박스의 중앙 영역 (포트홀 중심부) - 15%
+                    center_margin = 0.15  # 중앙 15% 영역
+                    h, w = region.shape
+                    center_h_start = int(h * (0.5 - center_margin/2))
+                    center_h_end = int(h * (0.5 + center_margin/2))
+                    center_w_start = int(w * (0.5 - center_margin/2))
+                    center_w_end = int(w * (0.5 + center_margin/2))
+                    
+                    center_region = region[center_h_start:center_h_end, center_w_start:center_w_end]
+                    center_depth = float(np.median(center_region)) if center_region.size > 0 else 0.0
+                    
+                    # 바운딩 박스의 가장자리 영역 (도로 표면) - 15%
+                    edge_margin = 0.15  # 가장자리 15% 영역
+                    edge_regions = []
+                    
+                    # 상단 가장자리
+                    top_edge = region[:int(h * edge_margin), :]
+                    if top_edge.size > 0:
+                        edge_regions.append(top_edge)
+                    
+                    # 하단 가장자리  
+                    bottom_edge = region[int(h * (1 - edge_margin)):, :]
+                    if bottom_edge.size > 0:
+                        edge_regions.append(bottom_edge)
+                    
+                    # 좌측 가장자리
+                    left_edge = region[:, :int(w * edge_margin)]
+                    if left_edge.size > 0:
+                        edge_regions.append(left_edge)
+                    
+                    # 우측 가장자리
+                    right_edge = region[:, int(w * (1 - edge_margin)):]
+                    if right_edge.size > 0:
+                        edge_regions.append(right_edge)
+                    
+                    # 가장자리 영역들의 평균 깊이 계산
+                    if edge_regions:
+                        edge_depths = [float(np.median(edge)) for edge in edge_regions if edge.size > 0]
+                        road_surface_depth = float(np.mean(edge_depths)) if edge_depths else center_depth
+                    else:
+                        road_surface_depth = center_depth
+                    
+                    # 포트홀 깊이 = 도로 표면 깊이 - 포트홀 중앙 깊이
+                    # MiDaS에서 더 깊은 곳이 더 큰 값을 가지므로
+                    depth_val = abs(center_depth - road_surface_depth)
+                    
+                    # 디버그 정보 (옵션)
+                    if self.print_detections:
+                        print(f"  중앙 깊이: {center_depth:.1f}, 도로 표면: {road_surface_depth:.1f}, 차이: {depth_val:.1f}")
+                        
                 else:
                     depth_val = 0.0
 
