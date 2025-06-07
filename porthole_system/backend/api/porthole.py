@@ -99,7 +99,7 @@ def save_porthole_image(image_base64: str, porthole_id: int, image_format: str =
 def notify_new_porthole(
     lat: float = Body(..., description="포트홀의 위도 좌표"),
     lng: float = Body(..., description="포트홀의 경도 좌표"), 
-    depth: float = Body(..., description="포트홀의 깊이(mm)"),
+    depth: float = Body(..., description="포트홀의 깊이 (상대값)"),
     image: Optional[str] = Body(None, description="base64로 인코딩된 포트홀 이미지")
 ):
     """

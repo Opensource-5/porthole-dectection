@@ -133,7 +133,7 @@ class PortholeServerAPI:
         Args:
             lat: 위도
             lng: 경도
-            depth: 포트홀 깊이(mm)
+            depth: 포트홀 깊이 (상대값)
             frame: 포트홀이 감지된 영상 프레임 (선택사항)
             
         Returns:
@@ -172,7 +172,7 @@ class PortholeServerAPI:
             
             if self.print_api_responses:
                 data_size = len(str(payload))
-                print(f"📡 서버로 포트홀 정보 전송 중: 위도={lat}, 경도={lng}, 깊이={depth}mm (데이터 크기: {data_size:,} bytes)")
+                print(f"📡 서버로 포트홀 정보 전송 중: 위도={lat}, 경도={lng}, 깊이={depth} (데이터 크기: {data_size:,} bytes)")
             
             for attempt in range(self.retry_count):
                 try:

@@ -12,7 +12,7 @@ st.set_page_config(
 )
 
 # API URL 설정
-API_BASE_URL = "http://localhost:8000/api"
+API_BASE_URL = "https://internal-buses-born-dimension.trycloudflare.com/api"
 
 # 전역 상태 초기화
 if 'last_check_time' not in st.session_state:

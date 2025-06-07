@@ -12,7 +12,7 @@ df = pd.read_csv('detection_results.csv')
 
 # 기본 통계 정보
 print("=== 기본 통계 ===")
-print(df.groupby('label')['depth_mm'].describe())
+print(df.groupby('label')['depth'].describe())
 
 # 각 라벨별 개수
 print("\n=== 라벨별 분포 ===")
@@ -23,13 +23,13 @@ plt.figure(figsize=(12, 8))
 
 # 1. 박스플롯
 plt.subplot(2, 2, 1)
-sns.boxplot(data=df, x='label', y='depth_mm')
+sns.boxplot(data=df, x='label', y='depth')
 plt.title('라벨별 깊이 분포 (박스플롯)')
 plt.xticks(rotation=45)
 
 # 2. 바이올린 플롯
 plt.subplot(2, 2, 2)
-sns.violinplot(data=df, x='label', y='depth_mm')
+sns.violinplot(data=df, x='label', y='depth')
 plt.title('라벨별 깊이 분포 (바이올린 플롯)')
 plt.xticks(rotation=45)
 
@@ -37,16 +37,16 @@ plt.xticks(rotation=45)
 plt.subplot(2, 2, 3)
 for label in df['label'].unique():
     if pd.notna(label):  # NaN 값 제외
-        subset = df[df['label'] == label]['depth_mm']
+        subset = df[df['label'] == label]['depth']
         plt.hist(subset, alpha=0.6, label=label, bins=20)
-plt.xlabel('Depth (mm)')
+plt.xlabel('상대적 깊이')
 plt.ylabel('Frequency')
 plt.title('깊이별 히스토그램')
 plt.legend()
 
 # 4. 산점도
 plt.subplot(2, 2, 4)
-sns.scatterplot(data=df, x='depth_mm', y='confidence', hue='label')
+sns.scatterplot(data=df, x='depth', y='confidence', hue='label')
 plt.title('깊이 vs 신뢰도 (라벨별)')
 
 plt.tight_layout()
@@ -67,18 +67,18 @@ print(f"\n자동 분류 정확도: {accuracy:.1f}% ({matches}/{total})")
 # 현재 임계값 확인 및 최적화
 def analyze_thresholds(df):
     # 라벨별 깊이 범위 분석
-    label_stats = df.groupby('label')['depth_mm'].agg(['min', 'max', 'mean', 'median'])
+    label_stats = df.groupby('label')['depth'].agg(['min', 'max', 'mean', 'median'])
     print("=== 라벨별 깊이 통계 ===")
     print(label_stats)
     
     # 최적 임계값 제안
-    shallow_max = df[df['label'] == 'shallow']['depth_mm'].quantile(0.75)
-    medium_min = df[df['label'] == 'medium']['depth_mm'].quantile(0.25)
-    medium_max = df[df['label'] == 'medium']['depth_mm'].quantile(0.75)
+    shallow_max = df[df['label'] == 'shallow']['depth'].quantile(0.75)
+    medium_min = df[df['label'] == 'medium']['depth'].quantile(0.25)
+    medium_max = df[df['label'] == 'medium']['depth'].quantile(0.75)
     
     print(f"\n=== 제안 임계값 ===")
-    print(f"Shallow/Medium 경계: {(shallow_max + medium_min) / 2:.2f}mm")
-    print(f"Medium/Deep 경계: {medium_max:.2f}mm 이상")
+    print(f"Shallow/Medium 경계: {(shallow_max + medium_min) / 2:.2f}")
+    print(f"Medium/Deep 경계: {medium_max:.2f} 이상")
 
 analyze_thresholds(df[df['label'] != 'none'])
 
@@ -87,15 +87,15 @@ def find_outliers(df):
     outliers = []
     
     for idx, row in df.iterrows():
-        depth = row['depth_mm']
+        depth = row['depth']
         label = row['label']
         
-        # 각 라벨별 예상 범위와 비교
-        if label == 'shallow' and depth > 10:
+        # 각 라벨별 예상 범위와 비교 (상대값 기준)
+        if label == 'shallow' and depth > 5:
             outliers.append((idx, row['filename'], depth, label, 'shallow인데 깊이가 너무 큼'))
-        elif label == 'medium' and (depth < 3 or depth > 15):
+        elif label == 'medium' and (depth <= 5 or depth > 15):
             outliers.append((idx, row['filename'], depth, label, 'medium 범위를 벗어남'))
-        elif label == 'deep' and depth < 10:
+        elif label == 'deep' and depth <= 15:
             outliers.append((idx, row['filename'], depth, label, 'deep인데 깊이가 얕음'))
     
     return outliers
@@ -103,7 +103,7 @@ def find_outliers(df):
 outliers = find_outliers(df)
 print("=== 이상치 데이터 ===")
 for outlier in outliers[:10]:  # 상위 10개만 출력
-    print(f"파일: {outlier[1]}, 깊이: {outlier[2]}mm, 라벨: {outlier[3]}, 이유: {outlier[4]}")
+    print(f"파일: {outlier[1]}, 깊이: {outlier[2]}, 라벨: {outlier[3]}, 이유: {outlier[4]}")
 
 def comprehensive_analysis(csv_path):
     df = pd.read_csv(csv_path)
@@ -118,7 +118,7 @@ def comprehensive_analysis(csv_path):
     
     # 2. 라벨별 깊이 통계
     print("\n📏 라벨별 깊이 통계:")
-    stats = df.groupby('label')['depth_mm'].agg(['count', 'mean', 'median', 'std', 'min', 'max'])
+    stats = df.groupby('label')['depth'].agg(['count', 'mean', 'median', 'std', 'min', 'max'])
     print(stats.round(2))
     
     # 3. 분류 정확도
@@ -131,7 +131,7 @@ def comprehensive_analysis(csv_path):
     print("\n⚠️  발견된 문제점:")
     
     # 깊이가 0이 아닌데 none 라벨
-    zero_depth_labeled = df[(df['depth_mm'] > 0) & (df['label'] == 'none')]
+    zero_depth_labeled = df[(df['depth'] > 0) & (df['label'] == 'none')]
     if len(zero_depth_labeled) > 0:
         print(f"- 깊이가 있는데 none 라벨: {len(zero_depth_labeled)}개")
     

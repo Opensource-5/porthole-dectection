@@ -241,7 +241,7 @@ def render_alert_tab(api_url: str):
                         <h3 style="color: {text_color};">{emoji} {risk_level} 위험도 알림</h3>
                         <p><b>메시지:</b> {alert_message}</p>
                         <p><b>위치:</b> {location}</p>
-                        <p><b>포트홀 ID:</b> {porthole_id} | <b>거리:</b> {distance:.1f}m | <b>깊이:</b> {depth}cm</p>
+                        <p><b>포트홀 ID:</b> {porthole_id} | <b>거리:</b> {distance:.1f}m | <b>깊이:</b> {depth}</p>
                         <p><b>생성시간:</b> {created_at} | <b>상태:</b> {"확인됨" if acknowledged else "미확인"}</p>
                     </div>
                     """, unsafe_allow_html=True)

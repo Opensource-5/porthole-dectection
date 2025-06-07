@@ -45,8 +45,8 @@ DEFAULT_CONFIG = {
         'address': "서울특별시 중구 세종대로"
     },
     'depth_classification': {
-        'shallow_threshold': 500,
-        'medium_threshold': 1500
+        'shallow_threshold': 5,
+        'medium_threshold': 15
     },
     'visualization': {
         'class_colors': {

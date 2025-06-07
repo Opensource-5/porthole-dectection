@@ -60,7 +60,7 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             lat REAL NOT NULL,            -- 위도
             lng REAL NOT NULL,            -- 경도
-            depth REAL,                   -- 깊이(cm)
+            depth REAL,                   -- 깊이
             location TEXT,                -- 위치 설명
             date TEXT,                    -- 발견 날짜
             status TEXT,                  -- 상태 (발견됨, 수리중, 수리완료 등)

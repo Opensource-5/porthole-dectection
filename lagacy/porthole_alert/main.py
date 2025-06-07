@@ -134,10 +134,10 @@ def assess_risk(processed_data):
     """
     depth = processed_data['depth']
     
-    # Risk assessment thresholds (adjust these values if needed)
-    if depth < 500:
+    # Risk assessment thresholds (상대값 기준으로 조정)
+    if depth <= 5:
         risk = "Low"
-    elif depth < 1500:
+    elif depth <= 15:
         risk = "Medium"
     else:
         risk = "High"

@@ -2,7 +2,7 @@
 
 # API 서버 설정
 api:
-  server_url: "https://negotiations-idol-regarded-uni.trycloudflare.com/api/notify_new_porthole"
+  server_url: "https://internal-buses-born-dimension.trycloudflare.com/api/notify_new_porthole"
   retry_count: 3
   timeout_seconds: 10
 
@@ -39,10 +39,10 @@ location:
   longitude: 126.9780
   address: "서울특별시 중구 세종대로" # 위도 경도에 따른 주소 확인용 (사용 X)
 
-# 깊이 분류 임계값 설정
+# 깊이 분류 임계값 설정 (상대값)
 depth_classification:
-  shallow_threshold: 5    # 얕은 깊이 임계값 (이하는 얕음)
-  medium_threshold: 15    # 중간 깊이 임계값 (이하는 중간, 이상은 깊음)
+  shallow_threshold: 5     # 얕은 깊이 임계값 (5 이하는 얕음)
+  medium_threshold: 15     # 중간 깊이 임계값 (15 이하는 중간, 이상은 깊음)
   
 # 시각화 설정
 visualization:
