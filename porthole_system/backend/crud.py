@@ -349,9 +349,9 @@ def get_car_alerts(car_id: int, include_acknowledged: bool = False) -> List[Dict
             depth = alert_dict.get('depth') or 0
             distance = alert_dict.get('distance') or 0
             
-            if depth > 2000:
+            if depth > 15:
                 risk_level = "High"
-            elif depth > 1000:
+            elif depth > 5:
                 risk_level = "Medium"
             else:
                 risk_level = "Low"

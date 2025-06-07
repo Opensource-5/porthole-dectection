@@ -64,7 +64,7 @@ def generate_alert_message(alert):
             
             prompt = f"""
             상황: 차량 인근에 포트홀이 발견되었습니다.
-            차량과 포트홀 거리: {alert.get('distance', 0)}m, 포트홀 깊이: {alert.get('depth', 0)}mm.
+            차량과 포트홀 거리: {alert.get('distance', 0)}m, 포트홀 깊이: {alert.get('depth', 0)}.
             위험도: {risk_level}, {alert_detail}
             포트홀 위치: {alert.get('location', '알 수 없음')}
             
