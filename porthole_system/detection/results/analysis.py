@@ -120,12 +120,12 @@ def find_outliers(df):
         depth = row['depth_delta']
         label = row['label']
         
-        # 각 라벨별 예상 범위와 비교
-        if label == 'shallow' and depth > 10:
+        # 각 라벨별 예상 범위와 비교 (상대값 기준)
+        if label == 'shallow' and depth > 5:
             outliers.append((idx, row['filename'], depth, label, 'shallow인데 깊이가 너무 큼'))
-        elif label == 'medium' and (depth < 3 or depth > 15):
+        elif label == 'medium' and (depth <= 5 or depth > 15):
             outliers.append((idx, row['filename'], depth, label, 'medium 범위를 벗어남'))
-        elif label == 'deep' and depth < 10:
+        elif label == 'deep' and depth <= 15:
             outliers.append((idx, row['filename'], depth, label, 'deep인데 깊이가 얕음'))
     
     return outliers

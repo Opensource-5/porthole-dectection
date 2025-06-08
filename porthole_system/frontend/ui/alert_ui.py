@@ -64,7 +64,7 @@ def generate_alert_message(alert):
             
             prompt = f"""
             상황: 차량 인근에 포트홀이 발견되었습니다.
-            차량과 포트홀 거리: {alert.get('distance', 0)}m, 포트홀 깊이: {alert.get('depth', 0)}mm.
+            차량과 포트홀 거리: {alert.get('distance', 0)}m, 포트홀 깊이: {alert.get('depth', 0)}.
             위험도: {risk_level}, {alert_detail}
             포트홀 위치: {alert.get('location', '알 수 없음')}
             
@@ -241,7 +241,7 @@ def render_alert_tab(api_url: str):
                         <h3 style="color: {text_color};">{emoji} {risk_level} 위험도 알림</h3>
                         <p><b>메시지:</b> {alert_message}</p>
                         <p><b>위치:</b> {location}</p>
-                        <p><b>포트홀 ID:</b> {porthole_id} | <b>거리:</b> {distance:.1f}m | <b>깊이:</b> {depth}cm</p>
+                        <p><b>포트홀 ID:</b> {porthole_id} | <b>거리:</b> {distance:.1f}m | <b>깊이:</b> {depth}</p>
                         <p><b>생성시간:</b> {created_at} | <b>상태:</b> {"확인됨" if acknowledged else "미확인"}</p>
                     </div>
                     """, unsafe_allow_html=True)

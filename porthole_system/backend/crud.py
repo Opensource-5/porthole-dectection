@@ -345,13 +345,14 @@ def get_car_alerts(car_id: int, include_acknowledged: bool = False) -> List[Dict
         alerts = []
         for row in results:
             alert_dict = dict(row)
-            # 위험도 계산 (거리와, 포트홀 깊이 기반)
+            # 위험도 계산 (거리와, 포트홀 깊이 기반) - 상대값
             depth = alert_dict.get('depth') or 0
             distance = alert_dict.get('distance') or 0
             
-            if depth > 2000:
+            # 상대값으로 계산 (15 이상은 높음, 5-15는 중간, 5 이하는 낮음)
+            if depth > 15:
                 risk_level = "High"
-            elif depth > 1000:
+            elif depth > 5:
                 risk_level = "Medium"
             else:
                 risk_level = "Low"

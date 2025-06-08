@@ -38,7 +38,7 @@ class AlertSettings:
             포트홀 깊이와 거리에 따른 위험도 레벨 계산
             
             Args:
-                depth (float): 포트홀 깊이(cm)
+                depth (float): 포트홀 깊이 (상대값)
                 distance (float): 차량과 포트홀 간 거리(m)
                 
             Returns:
@@ -47,9 +47,10 @@ class AlertSettings:
             depth = depth or 0
             distance = distance or 0
             
-            if depth > 2000:
+            # 상대값으로 계산 (15 이상은 높음, 5-15는 중간, 5 이하는 낮음)
+            if depth > 15:
                 return cls.HIGH
-            elif depth > 1000 or depth <= 2000:
+            elif depth > 5:
                 return cls.MEDIUM
             else:
                 return cls.LOW
