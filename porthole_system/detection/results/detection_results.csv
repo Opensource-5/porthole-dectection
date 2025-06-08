@@ -1,4 +1,4 @@
-filename,depth_mm,confidence,depth_class,label
+filename,depth_delta,confidence,depth_class,label
 img-195_jpg.rf.f77a8f4d432a9a89235168ff8e09a650.jpg,0.71,0.9006331562995911,shallow, shallow
 img-195_jpg.rf.f77a8f4d432a9a89235168ff8e09a650.jpg,2.26,0.8453335762023926,shallow, shallow
 img-195_jpg.rf.f77a8f4d432a9a89235168ff8e09a650.jpg,0.71,0.5928605794906616,shallow, shallow

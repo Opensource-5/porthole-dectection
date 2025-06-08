@@ -1,0 +1,95 @@
+# 포트홀 감지 시스템 설정 파일
+
+# API 서버 설정
+api:
+  server_url: "https://negotiations-idol-regarded-uni.trycloudflare.com/api/notify_new_porthole"
+  retry_count: 3
+  timeout_seconds: 10
+
+# 모델 설정
+models:
+  yolo:
+    path: "yolov5/runs/train/gun_yolov5s_results/weights/best.pt"
+    confidence_threshold: 0.5
+    img_size: 416
+  midas:
+    model_type: "DPT_Hybrid"
+    transform_type: "small_transform"  # small_transform, dpt_transform 등
+
+# 하드웨어 설정
+device:
+  # 디바이스 우선순위: mps > cuda > cpu
+  use_mps: true      # Apple Silicon (M1/M2) MPS 사용 여부
+  use_cuda: true     # NVIDIA CUDA 사용 여부
+  force_cpu: false   # CPU 강제 사용 여부
+
+# 데이터 경로 설정 (deprecated, legacy용 - 현재 사용 안함)
+data_paths:
+  base_dir: "."
+  train_images: "train/images/*.jpg"
+  valid_images: "valid/images/*.jpg"
+  test_images: "test/images/*.jpg"
+  train_txt: "train/train.txt"
+  valid_txt: "valid/val.txt"
+  yaml_path: "data.yaml"
+
+# 포트홀 위치 정보 (기본값)
+location:
+  latitude: 37.556150
+  longitude: 126.977350
+  address: "서울특별시 중구 세종대로" # 위도 경도에 따른 주소 확인용 (사용 X)
+
+# 깊이 분류 임계값 설정
+depth_classification:
+  shallow_threshold: 5    # 얕은 깊이 임계값 (이하는 얕음)
+  medium_threshold: 15    # 중간 깊이 임계값 (이하는 중간, 이상은 깊음)
+  
+# 시각화 설정
+visualization:
+  # 깊이별 색상 설정 (BGR 형식)
+  class_colors:
+    shallow: [0, 255, 0]     # 얕은 깊이 - 초록색
+    medium: [0, 165, 255]    # 중간 깊이 - 주황색  
+    deep: [0, 0, 255]        # 깊은 깊이 - 빨간색
+  
+  # 텍스트 및 박스 스타일
+  text_size: 0.6
+  text_thickness: 2
+  box_thickness: 2
+  
+  # 깊이 맵 설정
+  depth_colormap: "MAGMA"    # MAGMA, JET, VIRIDIS, PLASMA 등
+  overlay_alpha: 0.4         # 깊이 맵 오버레이 투명도 (0.0-1.0)
+
+# 웹캠/비디오 설정
+video:
+  input_type: "file"           # "webcam" 또는 "file"
+  webcam_source: 0
+  video_file_path: "/Users/localgroup/Documents/workspace/porthole-dectection/porthole_system/detection/porthole_video.mp4"            # 동영상 파일 경로 (input_type이 "file"일 때 사용)
+  frame_width: 640
+  frame_height: 480
+  fps: 30
+
+# 감지 설정
+detection:
+  min_detection_confidence: 0.3  # 감지 최소 신뢰도
+  send_to_server_confidence: 0.5  # 서버 전송 최소 신뢰도
+  min_send_interval: 5.0          # 최소 전송 간격 (초)
+  position_tolerance: 0.0001      # 위치 허용 오차 (도)
+  max_sent_cache_size: 100        # 전송된 위치 캐시 크기
+  duplicate_detection_distance: 50  # 중복 감지 거리 (픽셀)
+  
+# 디버그 설정
+debug:
+  print_detections: true     # 감지 결과 출력 여부
+  print_model_loading: true  # 모델 로딩 정보 출력 여부
+  print_api_responses: true  # API 응답 출력 여부
+
+# 이미지 캡처 설정
+image_capture:
+  enabled: true              # 이미지 캡처 활성화 여부
+  save_locally: false        # 로컬 저장 여부 (디버그용)
+  local_save_path: "./captured_images"  # 로컬 저장 경로
+  image_format: "jpg"        # 이미지 포맷 (jpg, png)
+  image_quality: 85          # JPEG 품질 (1-100)
+  max_image_size: 1024       # 최대 이미지 크기 (픽셀)
